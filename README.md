@@ -2,26 +2,34 @@
 
 **中国电信 话费、流量、语音监控 + 带管理员登录与双因素认证的 Web 管理台**
 
-由 [LambdaExpression/ChinaTelecomMonitor](https://github.com/LambdaExpression/ChinaTelecomMonitor) 演化而来，登录链路来自 CTPocket 接口复现。单个二进制、单个端口，默认监听 `0.0.0.0:9035`。
+单个二进制、单个端口，默认监听 `0.0.0.0:9035`。管理台自带登录保护与双因素认证，可部署在自己的 VPS 上长期运行。
 
-- 管理台有**单管理员登录**（Argon2id 密码哈希）+ **TOTP 双因素认证**
-- 电信账号支持 **短信验证码 + 滑块**，也保留 **手机号 + 密码**
-- 前台可**检查更新**并**一键更新**到最新正式版本
-- 部署走 systemd + Release 软链接切换，健康检查失败自动回滚
+## 功能
 
-## 本地启动
+- **用量概览**：话费余额、通用/专用流量、语音用量，定时采集 + 手动刷新
+- **流量提醒**：通用流量剩余低于设定值时发邮件，可配多个收件人；调整提醒线后仍不足会立即重发
+- **邮箱配置**：填好 SMTP 即可试发，不用先保存
+- **运行日志**：按日期落盘，支持日期 / 级别 / 关键词筛选与自动刷新
+- **电信账号**：滑块 + 短信验证码登录，也可用手机号 + 密码
+- **安全**：Argon2id 密码、TOTP 双因素、滑动 Session、CSRF 防护
+- **运维**：Release 软链接切换、健康检查失败自动回滚、管理台一键更新
+
+## 快速开始（本地）
 
 ```bash
+git clone https://github.com/MADAO-NW/ChinaTelecomAssistant.git
+cd ChinaTelecomAssistant
+
 go build -o ctm ./cmd/ctm
 
-# 1. 初始化管理员（只需一次，密码不会回显）
-./ctm admin init
+# 1. 生成管理员账号与随机密码（只打印一次）
+./ctm admin init --auto
 
-# 2. 前台启动（默认 0.0.0.0:9035）
+# 2. 启动（默认 0.0.0.0:9035）
 ./ctm web
 ```
 
-打开 `http://127.0.0.1:9035`，用刚才设置的管理员账号登录。
+打开 `http://127.0.0.1:9035`，用上面打印的账号登录。
 
 其它命令：
 
@@ -29,7 +37,8 @@ go build -o ctm ./cmd/ctm
 ./ctm web --daemon              # 后台常驻（写 data/web.pid）
 ./ctm web --stop                # 停止后台实例
 ./ctm web -listen 127.0.0.1:9035   # 只监听本机
-./ctm admin set-password        # 改密码（运行中的服务需重启）
+./ctm admin reset --auto        # 重置为新的随机密码
+./ctm admin set-password        # 交互式改密码（运行中的服务需重启）
 ./ctm admin disable-2fa         # 忘记认证器时停用 2FA
 ./ctm admin check               # 校验凭据文件是否可用
 ./ctm version
@@ -43,57 +52,58 @@ go build -o ctm ./cmd/ctm
 <data>/auth/totp-state.json     TOTP 防重放时间步
 <data>/session.json             电信登录态（手机号 + token）
 <data>/device_id                电信设备号
-<data>/logs/stdout.log          运行日志（滚动）
+<data>/notify.json              邮件通知配置与流量提醒记录（0600，含 SMTP 密码）
+<data>/logs/YYYY-MM-DD.log      运行日志（保留 15 天）
 ```
 
 ## VPS 部署
 
-私有仓库，安装脚本需要 **Contents: read** 的 GitHub 令牌：
+仓库是公开的，安装全程不需要令牌。
+
+### 一行安装（推荐）
 
 ```bash
-# 令牌只放在这台机器上，权限必须是 0600/0400
-sudo install -d -m 0755 /etc/ctm
-sudo sh -c 'printf "%s" "<你的只读令牌>" > /etc/ctm/github-token'
-sudo chmod 0600 /etc/ctm/github-token
+curl -fsSL https://raw.githubusercontent.com/MADAO-NW/ChinaTelecomAssistant/main/deploy/bootstrap.sh | sudo bash -s --
 ```
 
-### 一行安装（无需克隆仓库）
+指定版本：
 
 ```bash
-sudo bash bootstrap.sh                 # 安装最新正式版
-sudo bash bootstrap.sh v0.1.0          # 安装指定版本
-sudo bash bootstrap.sh --check         # 只预览将安装的版本
+curl -fsSL https://raw.githubusercontent.com/MADAO-NW/ChinaTelecomAssistant/main/deploy/bootstrap.sh | sudo bash -s -- v1.0.0
 ```
 
-也可以从仓库直接取脚本：
+只预览将要安装的版本（不需要 root）：
 
 ```bash
-curl -fsSL -H "Authorization: Bearer <token>" \
-  https://raw.githubusercontent.com/MADAO-NW/ChinaTelecomAssistant/main/deploy/bootstrap.sh \
-  | sudo -E bash -s --
+curl -fsSL https://raw.githubusercontent.com/MADAO-NW/ChinaTelecomAssistant/main/deploy/bootstrap.sh | bash -s -- --check
 ```
 
-### 手动安装 / 更新 / 回滚
+### 手动安装
 
 ```bash
-sudo ./deploy/install.sh install [版本]   # 未指定版本时取最新 Release
-sudo ./deploy/install.sh update  [版本]
+git clone https://github.com/MADAO-NW/ChinaTelecomAssistant.git
+cd ChinaTelecomAssistant
+
+sudo ./deploy/install.sh install            # 最新 Release
+sudo ./deploy/install.sh install v1.0.0     # 指定版本
 sudo ./deploy/install.sh status
 sudo ./deploy/install.sh rollback
 ```
 
-首次安装会交互式要求设置管理员账号（`ctm admin init`），**未设置凭据时服务不会启动**，避免管理端裸奔在公网。
+安装脚本会自动生成管理员账号与随机密码，并在结束时**打印一次**，请立即保存。忘记时在服务器上执行：
 
-安装完成后：
+```bash
+sudo -u ctm /opt/ctm/current/ctm -data-dir /var/lib/ctm admin reset --auto
+```
+
+安装后的目录布局：
 
 ```
 /opt/ctm/current -> /opt/ctm/releases/<tag>   当前版本（软链接）
 /opt/ctm/previous -> ...                      上一版本（回滚用）
 /opt/ctm/install.sh                           已安装的安装脚本（root 所有）
 /var/lib/ctm/                                 数据、凭据、日志（ctm 用户所有）
-/etc/ctm/github-token                         只读令牌（root 0600）
-/etc/ctm/ctm.env                              令牌注入给服务进程（root 0600）
-/etc/systemd/system/ctm.service               主服务
+/usr/local/lib/ctm/ctm-update                 一键更新执行器（root 所有）
 ```
 
 服务以专用系统用户 `ctm` 运行，systemd 沙箱为 `NoNewPrivileges` + `ProtectSystem=full` + `ReadWritePaths=/var/lib/ctm`，只能读写自己的数据目录。
@@ -102,15 +112,15 @@ sudo ./deploy/install.sh rollback
 
 默认监听 `0.0.0.0:9035`。请在云厂商安全组放行 9035，并务必：
 
-1. 装完立刻设置管理员密码
+1. 装完立刻保存打印出来的管理员密码
 2. 在管理台「安全设置」启用双因素认证
 3. 有条件时在前置 Nginx/Caddy 上加 HTTPS 与来源限制
 
-## 一键更新
+## 更新
 
-管理台「系统更新」页可以检查 GitHub Release 并一键更新到最新正式版本。
+### 管理台一键更新
 
-提权路径（与 yzfExchange 一致，服务不提权）：
+「系统更新」页可以检查 GitHub Release 并一键更新到最新正式版本。服务本身不提权，提权路径是：
 
 ```
 管理台写 /var/lib/ctm/update-request（内容 v<x.y.z>）
@@ -122,13 +132,31 @@ sudo ./deploy/install.sh rollback
 
 服务进程不能改 `/etc`、`/opt/ctm`，也不能重启自己所在的 cgroup；执行器归 root 所有，服务用户不可写。更新状态落盘，重启后按执行器结果与当前版本对账。
 
-检查更新需要只读令牌：安装时会把令牌写进 `/etc/ctm/ctm.env`（root 0600），systemd 以 `EnvironmentFile` 注入服务进程。
+### 命令行更新
+
+```bash
+sudo ./deploy/install.sh update            # 更新到最新
+sudo ./deploy/install.sh update v1.0.1     # 更新到指定版本
+sudo ./deploy/install.sh rollback          # 回滚到上一版本
+```
+
+### 关于令牌（可选）
+
+公开仓库匿名调用 GitHub API 的限额是**每出口 IP 每小时 60 次**，正常使用远够。如果同一 IP 反复安装碰到限流，可以提供一个只读令牌抬高限额：
+
+```bash
+sudo install -d -m 0755 /etc/ctm
+sudo sh -c 'printf "%s" "<你的只读令牌>" > /etc/ctm/github-token'
+sudo chmod 0600 /etc/ctm/github-token
+```
+
+写了这个文件后，安装与管理台「检查更新」都会自动带上它。令牌不是安装的前提。
 
 ## 发布新版本
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v1.0.0
+git push origin v1.0.0
 ```
 
 CI（`.github/workflows/release.yml`）会跑测试、交叉编译 `linux/amd64` 与 `linux/arm64`、生成 `SHA256SUMS`，并把 `install.sh` / `bootstrap.sh` 一起挂到 Release。安装脚本按 `ctm-<tag>-linux-<arch>.tar.gz` 找包并校验哈希。
@@ -152,6 +180,12 @@ CI（`.github/workflows/release.yml`）会跑测试、交叉编译 `linux/amd64`
 | POST | `/api/usage/refresh` | 强制刷新 |
 | GET/POST | `/api/telecom/session` | 查询 / 保存 / 清除电信登录态 |
 | POST | `/api/telecom/{start,challenge,verify,sms,login,password-login}` | 电信账号登录链路 |
+| GET/PUT | `/api/notify` | 读取 / 保存邮件与流量提醒配置 |
+| POST | `/api/notify/test` | 用当前填写内容试发一封（不保存） |
+| POST | `/api/monitor/check` | 立即检测一次流量 |
+| DELETE | `/api/monitor/records` | 清空提醒记录 |
+| GET | `/api/logs/dates` | 可查询的日志日期列表 |
+| GET | `/api/logs` | 按日期 / 级别 / 关键词查询日志 |
 | GET | `/api/system/version` | 版本检查（`?force=1` 绕过缓存） |
 | GET/POST | `/api/system/update` | 更新状态 / 发起一键更新 |
 
@@ -203,7 +237,7 @@ internal/admin/       管理员凭据、Session、TOTP、登录限流
 internal/auth/        电信登录：滑块、短信、密码、会话持久化
 internal/telecom/     业务网关：话费/流量查询与汇总换算
 internal/mailer/      SMTP 发信（SSL / STARTTLS / 明文）
-internal/notify/      通知配置、流量告警监控与提醒记录
+internal/notify/      通知配置、流量提醒监控与记录
 internal/version/     构建版本注入
 internal/web/         HTTP 服务、认证中间件、管理 API、内嵌页面
 configs/              数据目录布局与运行时配置
@@ -218,3 +252,12 @@ deploy/               install.sh / bootstrap.sh
 - 所有写操作校验 `X-CSRF-Token`；登录失败按 IP+账号渐进延迟（3 次后 1s、2s…最多 30s）
 - TOTP 校验接受当前及相邻时间步，并持久化已消费的时间步，防止动态码在重启前后重放
 - 响应头带 CSP、`X-Frame-Options: DENY`、`X-Content-Type-Options: nosniff`、`no-store`
+- `notify.json` 内含 SMTP 密码，落盘权限 0600，接口只回传「是否已设置」
+
+## 说明
+
+本项目仅供个人查询自己的电信账号用量使用。请遵守运营商服务条款，不要用于批量或商业用途。登录链路参考了 [LambdaExpression/ChinaTelecomMonitor](https://github.com/LambdaExpression/ChinaTelecomMonitor) 的公开实现。
+
+## 许可证
+
+MIT

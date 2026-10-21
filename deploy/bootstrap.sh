@@ -2,18 +2,21 @@
 # 一行式安装引导：从 Release 取回 deploy/install.sh 并执行 install。
 #
 # 适用于全新机器（不需要先克隆仓库）。本脚本只做三件事：
-#   1. 用令牌向 GitHub API 解析最新（或指定）正式版本，找到它的 install.sh 资产；
-#   2. 带令牌下载该资产并做轻量校验；
-#   3. 导出 GH_TOKEN 后调用 `install.sh install [版本]`，其余全部交给 install.sh。
-#
-# 私有仓库必须提供令牌（Contents: read）：
-#   GH_TOKEN / CTM_GITHUB_TOKEN 环境变量，或 --token-file 指定的文件
-#   （默认 /etc/ctm/github-token，权限 0600/0400）。
+#   1. 向 GitHub API 解析最新（或指定）正式版本，找到它的 install.sh 资产；
+#   2. 匿名下载该资产并做轻量校验（仓库是公开的，不需要令牌）；
+#   3. 调用 `install.sh install [版本]`，其余全部交给 install.sh。
 #
 # 用法：
-#   sudo bash bootstrap.sh                          # 安装最新正式版，令牌取 /etc/ctm/github-token
+#   sudo bash bootstrap.sh                          # 安装最新正式版
 #   sudo bash bootstrap.sh v0.1.0                   # 指定版本
-#   sudo bash bootstrap.sh --version v0.1.0 --check # 只解析并打印将要执行的命令
+#   sudo bash bootstrap.sh --check                  # 只解析并打印将要执行的命令
+#
+# 一行安装（无需先下载本脚本）：
+#   curl -fsSL https://raw.githubusercontent.com/MADAO-NW/ChinaTelecomAssistant/main/deploy/bootstrap.sh | sudo bash -s --
+#
+# GitHub API 对匿名请求限额为每出口 IP 每小时 60 次。如果碰到限流，
+# 可以设置 GH_TOKEN（任意只读令牌）来抬高限额：
+#   sudo GH_TOKEN=<token> bash bootstrap.sh
 #
 # 环境变量：CTM_GITHUB_REPO（默认 MADAO-NW/ChinaTelecomAssistant）、
 #           CTM_GITHUB_API_BASE（默认 https://api.github.com）。
@@ -21,7 +24,6 @@ set -Eeuo pipefail
 
 readonly DEFAULT_REPOSITORY="MADAO-NW/ChinaTelecomAssistant"
 readonly DEFAULT_API_BASE="https://api.github.com"
-readonly DEFAULT_TOKEN_FILE="/etc/ctm/github-token"
 readonly TAG_PATTERN='^v[0-9]+\.[0-9]+\.[0-9]+$'
 
 TEMP_DIR=""
@@ -43,11 +45,10 @@ usage() {
 
   [版本标签]              形如 v0.1.0 或 0.1.0；省略时安装最新正式版本
   --version <标签>        同上（显式写法）
-  --token-file <路径>     GitHub 令牌文件（默认 /etc/ctm/github-token，权限需为 0600/0400）
   --check                 只解析版本与资产并打印将要执行的命令，不下载、不安装
   -h, --help              显示本帮助
 
-令牌优先取环境变量 GH_TOKEN / CTM_GITHUB_TOKEN，其次取令牌文件。
+仓库是公开的，默认匿名下载。若遇到 GitHub API 限流，可设置 GH_TOKEN 抬高限额。
 EOF
 }
 
@@ -55,30 +56,7 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "缺少命令：$1"
 }
 
-# resolve_token 按优先级取令牌（不打印内容）。
-resolve_token() {
-  local token_file=$1
-  if [[ -n ${GH_TOKEN:-} ]]; then
-    printf '%s' "${GH_TOKEN}"
-    return 0
-  fi
-  if [[ -n ${CTM_GITHUB_TOKEN:-} ]]; then
-    printf '%s' "${CTM_GITHUB_TOKEN}"
-    return 0
-  fi
-  [[ -e ${token_file} ]] || die "未找到 GitHub 令牌：请设置 GH_TOKEN，或创建 ${token_file}"
-  [[ -r ${token_file} ]] || die "令牌文件不可读：${token_file}"
-  local mode
-  mode=$(stat -c '%a' "${token_file}")
-  [[ ${mode} == "600" || ${mode} == "400" ]] || die "令牌文件权限必须是 0600 或 0400：${token_file}"
-  local token
-  token=$(<"${token_file}")
-  [[ -n ${token} ]] || die "令牌文件为空：${token_file}"
-  printf '%s' "${token}"
-}
-
 version=""
-token_file=${DEFAULT_TOKEN_FILE}
 check_only=0
 
 while [[ $# -gt 0 ]]; do
@@ -86,11 +64,6 @@ while [[ $# -gt 0 ]]; do
     --version)
       [[ $# -ge 2 ]] || die "--version 缺少参数"
       version=$2
-      shift 2
-      ;;
-    --token-file)
-      [[ $# -ge 2 ]] || die "--token-file 缺少参数"
-      token_file=$2
       shift 2
       ;;
     --check)
@@ -126,9 +99,13 @@ repository=${CTM_GITHUB_REPO:-${DEFAULT_REPOSITORY}}
 api_base=${CTM_GITHUB_API_BASE:-${DEFAULT_API_BASE}}
 require_command curl
 require_command python3
-token=$(resolve_token "${token_file}")
+# 令牌是可选的：只用来抬高 GitHub API 限额
+token=${GH_TOKEN:-}
+# 允许通过脚本参数化仓库与 API，便于调试私有镜像
+export CTM_GITHUB_REPO="${repository}"
+export CTM_GITHUB_API_BASE="${api_base}"
 
-# 参数与令牌先校验，再要求 root：--check 是只读的，非 root 也能预览
+# 参数先校验，再要求 root：--check 是只读的，非 root 也能预览
 if [[ ${check_only} -eq 0 && ${EUID} -ne 0 ]]; then
   die "请使用 root 或 sudo 执行（安装需要写 /opt/ctm 与 systemd 单元）；只想预览可加 --check"
 fi
@@ -137,12 +114,21 @@ TEMP_DIR=$(mktemp -d)
 release_json="${TEMP_DIR}/release.json"
 
 echo "解析发布：${repository} ${version:-最新正式版本}"
-if ! curl --fail --silent --show-error --location --retry 3 \
-  -H "Authorization: Bearer ${token}" \
-  -H "Accept: application/vnd.github+json" \
-  "${api_base}/repos/${repository}/releases/${release_endpoint}" \
-  -o "${release_json}"; then
-  die "读取 Release 失败：请确认令牌有效且具备该仓库的 Contents: read 权限"
+if [[ -n ${token} ]]; then
+  curl --fail --silent --show-error --location --retry 3 \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2026-03-10" \
+    "${api_base}/repos/${repository}/releases/${release_endpoint}" \
+    -o "${release_json}" ||
+    die "读取 Release 失败：请确认版本标签存在，或换成 GH_TOKEN 重试（可能是 API 限流）"
+else
+  curl --fail --silent --show-error --location --retry 3 \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2026-03-10" \
+    "${api_base}/repos/${repository}/releases/${release_endpoint}" \
+    -o "${release_json}" ||
+    die "读取 Release 失败：请确认版本标签存在，或设置 GH_TOKEN 重试（匿名请求每小时 60 次限额）"
 fi
 
 resolved=$(python3 - "${release_json}" <<'PY'
@@ -168,19 +154,26 @@ asset_url=$(printf '%s\n' "${resolved}" | sed -n '2p')
 if [[ ${check_only} -eq 1 ]]; then
   echo "目标版本：${tag}"
   echo "安装脚本：install.sh（asset id=${asset_url##*/}）"
-  echo "将执行：GH_TOKEN=<已隐藏> bash install.sh install ${tag}"
+  echo "将执行：bash install.sh install ${tag}"
   echo "（--check 只预览，不下载、不安装）"
   exit 0
 fi
 
 install_script="${TEMP_DIR}/install.sh"
 echo "下载安装脚本：${tag}"
-if ! curl --fail --silent --show-error --location --retry 3 \
-  -H "Authorization: Bearer ${token}" \
-  -H "Accept: application/octet-stream" \
-  "${asset_url}" \
-  -o "${install_script}"; then
-  die "下载 install.sh 失败：${asset_url}"
+if [[ -n ${token} ]]; then
+  curl --fail --silent --show-error --location --retry 3 \
+    -H "Authorization: Bearer ${token}" \
+    -H "Accept: application/octet-stream" \
+    "${asset_url}" \
+    -o "${install_script}" ||
+    die "下载 install.sh 失败：${asset_url}"
+else
+  curl --fail --silent --show-error --location --retry 3 \
+    -H "Accept: application/octet-stream" \
+    "${asset_url}" \
+    -o "${install_script}" ||
+    die "下载 install.sh 失败：${asset_url}"
 fi
 chmod 0755 "${install_script}"
 first_line=$(head -n 1 "${install_script}")
@@ -188,7 +181,9 @@ if [[ ${first_line} != "#!"* ]] || ! grep -q 'install_release' "${install_script
   die "下载到的 install.sh 内容异常，已中止"
 fi
 
-# 交给 install.sh 完成下载、校验、切换、健康检查与回滚；令牌用环境变量传递，避免写入磁盘
-export GH_TOKEN="${token}"
+# 交给 install.sh 完成下载、校验、切换、健康检查与回滚
 echo "开始安装：${tag}"
+if [[ -n ${token} ]]; then
+  export GH_TOKEN="${token}"
+fi
 bash "${install_script}" install "${tag}"

@@ -170,14 +170,19 @@ func fetchLatestRelease(repo string) (*releaseInfo, error) {
 	switch resp.StatusCode {
 	case http.StatusOK:
 	case http.StatusNotFound:
+		// 仓库公开：404 只可能是版本标签不存在，或还没发过 Release
 		if token == "" {
-			return nil, errors.New("仓库不可访问：私有仓库需要只读令牌（" + source + "）")
+			return nil, fmt.Errorf("还没有发布版本（%s 下没有 Release）", repo)
 		}
-		return nil, fmt.Errorf("仓库或 Release 不存在: %s", repo)
+		return nil, fmt.Errorf("仓库或 Release 不存在（令牌来源：%s）：%s", source, repo)
 	case http.StatusUnauthorized, http.StatusForbidden:
+		// 带令牌却被拒：令牌失效或权限不足；不带令牌被拒：出入口 IP 被限流
+		if token == "" {
+			return nil, fmt.Errorf("GitHub 拒绝匿名访问（HTTP %d），可能是 API 限流，请稍后重试或配置只读令牌", resp.StatusCode)
+		}
 		return nil, fmt.Errorf("GitHub 拒绝访问（HTTP %d），请检查只读令牌（来源：%s）", resp.StatusCode, source)
 	case http.StatusTooManyRequests:
-		return nil, errors.New("GitHub API 触发限频，请稍后再试")
+		return nil, errors.New("GitHub API 触发限频，请稍后再试（可在 /etc/ctm/github-token 配置只读令牌提高限额）")
 	default:
 		return nil, fmt.Errorf("GitHub 返回 HTTP %d", resp.StatusCode)
 	}

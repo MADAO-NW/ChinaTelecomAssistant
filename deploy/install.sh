@@ -51,11 +51,12 @@ usage() {
   sudo ./install.sh status
   sudo ./install.sh rollback
 
-未指定版本标签时安装最新 Release。私有仓库下载令牌按以下优先级读取：
+未指定版本标签时安装最新 Release。仓库是公开的，默认匿名下载，无需令牌。
+
+如果遇到 GitHub API 限流（同一出口 IP 每小时 60 次），可以提供一个只读令牌：
   1. 当前进程的 GH_TOKEN 环境变量
   2. /etc/ctm/github-token 文件（权限 0600/0400）
-
-令牌只需要目标私有仓库的 Contents: read 权限。
+令牌会一并写入 /etc/ctm/ctm.env，供管理端“检查更新”复用。
 
 安装或更新还会顺带安装“一键自更新”入口（都在 root 名下，服务用户不可写）：
   /usr/local/lib/ctm/ctm-update          执行器：读取请求文件并调用本脚本以 root 更新
@@ -87,38 +88,54 @@ detect_arch() {
   esac
 }
 
-read_github_token() {
+# read_optional_token 取可选令牌；没有就返回空串（公开仓库匿名下载即可）。
+# 令牌只用来抬高 GitHub API 的限额，不是安装的前提。
+read_optional_token() {
   if [[ -n ${GH_TOKEN:-} ]]; then
     printf '%s' "${GH_TOKEN}"
     return
   fi
-  if [[ -r ${TOKEN_FILE} ]]; then
+  if [[ -e ${TOKEN_FILE} ]]; then
     local mode token
+    [[ -r ${TOKEN_FILE} ]] || die "令牌文件不可读：${TOKEN_FILE}"
     mode=$(stat -c '%a' "${TOKEN_FILE}")
     [[ ${mode} == "600" || ${mode} == "400" ]] || \
       die "令牌文件权限必须是 0600 或 0400：${TOKEN_FILE}"
     token=$(<"${TOKEN_FILE}")
     [[ -n ${token} ]] || die "令牌文件为空：${TOKEN_FILE}"
     printf '%s' "${token}"
-    return
   fi
-  die "未找到 GitHub 令牌，请设置 GH_TOKEN 或创建 ${TOKEN_FILE}"
 }
 
+# github_request 下载 GitHub 资源；token 为空时不带 Authorization 头（匿名请求）。
 github_request() {
   local token=$1 accept=$2 url=$3 output=$4
-  {
-    printf 'header = "Authorization: Bearer %s"\n' "${token}"
-    printf 'header = "Accept: %s"\n' "${accept}"
-    printf 'header = "X-GitHub-Api-Version: %s"\n' "${API_VERSION}"
-  } | curl \
-    --config - \
-    --fail \
-    --silent \
-    --show-error \
-    --location \
-    --output "${output}" \
-    "${url}"
+  if [[ -n ${token} ]]; then
+    {
+      printf 'header = "Authorization: Bearer %s"\n' "${token}"
+      printf 'header = "Accept: %s"\n' "${accept}"
+      printf 'header = "X-GitHub-Api-Version: %s"\n' "${API_VERSION}"
+    } | curl \
+      --config - \
+      --fail \
+      --silent \
+      --show-error \
+      --location \
+      --retry 3 \
+      --output "${output}" \
+      "${url}"
+  else
+    curl \
+      --fail \
+      --silent \
+      --show-error \
+      --location \
+      --retry 3 \
+      --header "Accept: ${accept}" \
+      --header "X-GitHub-Api-Version: ${API_VERSION}" \
+      --output "${output}" \
+      "${url}"
+  fi
 }
 
 ensure_system_user() {
@@ -206,17 +223,14 @@ EOF
   mv -f "${temporary_file}" "${SERVICE_FILE}"
 }
 
-# write_service_env_file 把只读令牌以环境变量形式提供给服务进程（管理端“检查更新”用）。
-# 令牌文件本身仍是 0600/0400 root，systemd 以 root 读取 EnvironmentFile 后注入，无需放宽权限。
+# write_service_env_file 把可选令牌以环境变量形式提供给服务进程（管理端“检查更新”用）。
+# 仓库公开，没有令牌也能检查更新，所以令牌缺失不再写文件、也不再报警。
 write_service_env_file() {
-  local token=""
-  if [[ -n ${GH_TOKEN:-} ]]; then
-    token=${GH_TOKEN}
-  elif [[ -r ${TOKEN_FILE} ]]; then
-    token=$(<"${TOKEN_FILE}")
-  fi
+  local token
+  token=$(read_optional_token)
   if [[ -z ${token} ]]; then
-    echo "未找到 GitHub 令牌，跳过 ${ENV_FILE}（管理端“检查更新”会提示未配置令牌）" >&2
+    # 之前配过令牌、现在移除了：清掉旧文件，避免残留凭据
+    rm -f -- "${ENV_FILE}"
     return 0
   fi
   install -d -o root -g root -m 0755 "$(dirname "${ENV_FILE}")"
@@ -379,7 +393,7 @@ install_release() {
   done
 
   arch=$(detect_arch)
-  token=$(read_github_token)
+  token=$(read_optional_token)
   if [[ ${requested_version} == "latest" ]]; then
     release_url="${API_ROOT}/releases/latest"
   else
