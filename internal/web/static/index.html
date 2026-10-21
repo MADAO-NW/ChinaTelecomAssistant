@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>电信话费流量监控</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%232563EB'/%3E%3Cpath d='M4 14c0-4 3.6-7 8-7s8 3 8 7M8 17h8M12 7V4' fill='none' stroke='%23fff' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  /* 蓝白管理台：浅灰背景、白色内容面、蓝色主操作。 */
+  :root {
+    color-scheme: light;
+    --bg:#F8FAFC; --surface:#FFFFFF; --surface-soft:#F8FAFC;
+    --text:#1E293B; --muted:#475569; --border:#E2E8F0;
+    --soft:#EFF6FF; --primary:#2563EB; --primary-hover:#1D4ED8;
+    --primary-soft:#EFF6FF; --primary-border:#BFDBFE; --ring:#2563EB;
+    --row-hover:#F8FBFF;
+    --success:#15803D; --success-soft:#F0FDF4;
+    --danger:#B91C1C; --danger-soft:#FEF2F2; --danger-border:#FECACA;
+    --warning:#B45309; --warning-soft:#FFFBEB;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 6px 16px rgba(15,23,42,.05);
+    --shadow-sm:0 1px 2px rgba(15,23,42,.06);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+  button,input,select,textarea { font:inherit; accent-color:var(--text); }
+  button { cursor:pointer; transition:background .15s,border-color .15s,color .15s; }
+  button:disabled { opacity:.55; cursor:default; }
+  :focus-visible { outline:2px solid var(--ring); outline-offset:2px; }
+  [hidden] { display:none!important; }
+  .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+
+  /* ---------- 登录 ---------- */
+  .auth-screen { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:var(--bg); }
+  .auth-card { width:100%; max-width:440px; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:32px; box-shadow:var(--shadow); }
+  .auth-brand { display:flex; align-items:center; gap:10px; margin-bottom:22px; }
+  .brand-mark { width:34px; height:34px; border-radius:9px; background:linear-gradient(135deg,#2563EB 0%,#1D4ED8 100%); color:#fff; display:grid; place-items:center; box-shadow:var(--shadow-sm); }
+  .auth-card h1 { font-size:20px; font-weight:650; letter-spacing:-.3px; }
+  .auth-card .hint { color:var(--muted); font-size:13px; margin-top:6px; }
+  .auth-error { min-height:20px; margin-top:14px; color:var(--danger); font-size:13px; }
+  .auth-card .btn { width:100%; margin-top:20px; }
+  .auth-card label { display:block; margin:14px 0 6px; font-size:13px; color:var(--muted); }
+  .auth-card input { width:100%; }
+  .qr-image { display:block; width:180px; height:180px; margin:16px auto 8px; border:1px solid var(--border); border-radius:8px; background:#fff; }
+  .secret-value { font:12px Menlo,monospace; overflow-wrap:anywhere; padding:10px; background:var(--surface-soft); border:1px solid var(--border); border-radius:6px; user-select:all; }
+
+  /* ---------- 布局 ---------- */
+  .app-layout { display:grid; grid-template-columns:224px minmax(0,1fr); min-height:100vh; }
+  .sidebar { position:sticky; top:0; height:100vh; overflow-y:auto; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; padding:26px 14px 16px; gap:30px; }
+  .brand { display:flex; align-items:center; gap:10px; padding:0 10px; font-size:17px; font-weight:650; }
+  .brand-text { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-width:0; }
+  .version-badge { font-family:Menlo,monospace; font-size:12px; line-height:1.5; border:0; background:#F1F5F9; color:#64748B; border-radius:999px; padding:2px 9px; cursor:pointer; }
+  .version-badge:hover { background:#E2E8F0; color:var(--primary); }
+  .version-badge.update { background:var(--warning-soft); color:var(--warning); }
+  .icon { width:18px; height:18px; display:inline-block; flex:none; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; vertical-align:middle; }
+  .sidebar-nav { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:24px; }
+  .nav-group { display:grid; gap:5px; }
+  .nav-caption { padding:0 12px 6px; color:var(--muted); font-size:12px; letter-spacing:1px; }
+  .nav-link { display:flex; gap:10px; align-items:center; border:0; background:transparent; width:100%; text-align:left; border-radius:7px; padding:11px 12px; color:var(--muted); font-size:14px; }
+  .nav-link:hover { background:var(--soft); color:var(--primary); }
+  .nav-link.active { color:var(--primary); background:var(--primary-soft); font-weight:600; box-shadow:inset 0 0 0 1px var(--primary-border); }
+  /* 底部管理栏固定在侧边栏底部，不随导航滚动 */
+  .sidebar > .brand, .sidebar-bottom { flex:none; }
+  .sidebar-bottom { margin-top:auto; border-top:1px solid var(--border); padding:14px 8px 0; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .sidebar-user { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+  .workspace { min-width:0; }
+  .topbar { position:sticky; top:0; z-index:10; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; padding:15px 28px; background:var(--surface); border-bottom:1px solid var(--border); }
+  .account-avatar { width:40px; height:40px; flex:none; display:grid; place-items:center; border-radius:12px; color:var(--primary); background:var(--primary-soft); }
+  .header-account { display:flex; align-items:center; gap:12px; min-width:0; }
+  .header-label { color:var(--muted); font-size:12px; }
+  .header-right { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  main { padding:28px; max-width:1600px; margin:auto; }
+
+  /* ---------- 组件 ---------- */
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .page-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; margin-bottom:24px; }
+  .heading-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  h1 { font-size:24px; font-weight:650; letter-spacing:-.5px; }
+  h2,h3 { font-size:15px; font-weight:600; }
+  .subtitle,.hint { color:var(--muted); font-size:12px; margin-top:5px; }
+  .hint.tight { margin-top:0; }
+  input,select,textarea { color:var(--text); background:var(--surface); padding:9px 11px; border:1px solid var(--border); border-radius:6px; min-width:0; max-width:100%; transition:border-color .15s,box-shadow .15s; }
+  input:focus,select:focus,textarea:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.15); }
+  input.invalid { border-color:var(--danger); box-shadow:0 0 0 3px rgba(185,28,28,.12); }
+  .btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; border:1px solid var(--primary); border-radius:6px; padding:9px 14px; font-size:13px; background:var(--primary); color:#fff; white-space:nowrap; }
+  .btn:hover { background:var(--primary-hover); border-color:var(--primary-hover); }
+  .btn:disabled:hover { background:var(--primary); border-color:var(--primary); }
+  .btn.gray { background:var(--surface); border-color:var(--border); color:var(--text); }
+  .btn.gray:hover { background:var(--soft); border-color:var(--primary-border); color:var(--primary); }
+  .btn.red { color:var(--danger); background:var(--surface); border-color:var(--danger-border); }
+  .btn.red:hover { background:var(--danger-soft); border-color:var(--danger); }
+  .btn.small { padding:5px 10px; font-size:12px; }
+  .badge { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:5px; font-size:12px; white-space:nowrap; }
+  .badge.green { background:var(--success-soft); color:var(--success); }
+  .badge.red { background:var(--danger-soft); color:var(--danger); }
+  .badge.orange { background:var(--warning-soft); color:var(--warning); }
+  .badge.gray { background:var(--surface-soft); color:var(--muted); }
+  .badge.blue { background:var(--primary-soft); color:var(--primary); }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:18px; box-shadow:var(--shadow-sm); }
+  .card h3 { margin-bottom:16px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .form-field { display:grid; gap:7px; margin-bottom:14px; }
+  .form-field > label { font-size:13px; color:var(--muted); }
+  .field-error { color:var(--danger); font-size:12px; }
+  .field-error:empty { display:none; }
+  .panel-message { padding:12px 16px; border:1px solid var(--danger-border); border-radius:9px; color:var(--danger); background:var(--danger-soft); margin-bottom:16px; overflow-wrap:anywhere; }
+  .panel-message:empty { display:none; }
+  .stat-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-bottom:20px; }
+  .stat { border:1px solid var(--border); border-radius:10px; padding:17px; background:var(--surface); box-shadow:var(--shadow-sm); display:flex; flex-direction:column; }
+  .stat .label { font-size:12px; color:var(--muted); margin-bottom:8px; }
+  .stat .num { font-size:26px; font-weight:600; font-variant-numeric:tabular-nums; letter-spacing:-.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stat .num small { font-size:13px; font-weight:400; color:var(--muted); letter-spacing:0; white-space:nowrap; }
+  /* 剩余量：贴在数值下方，弱化层级 */
+  .stat .remaining { font-size:12px; color:var(--muted); margin-top:7px; font-variant-numeric:tabular-nums; }
+  .stat .remaining b { color:var(--text); font-weight:600; }
+  .meter { height:6px; border-radius:99px; background:#E2E8F0; overflow:hidden; margin-top:auto; }
+  .meter > i { display:block; height:100%; width:0; background:var(--primary); border-radius:99px; transition:width .3s; }
+  .table-wrap { overflow-x:auto; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow-sm); }
+  table { width:100%; border-collapse:collapse; background:var(--surface); }
+
+  /* 表单网格：邮箱与告警设置 */
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:14px 18px; }
+  .form-field.wide { grid-column:1/-1; }
+  .form-field input, .form-field select, .form-field textarea { width:100%; }
+  .form-field textarea { font-family:inherit; resize:vertical; line-height:1.7; }
+  .check-line { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--text); }
+  .check-line input[type="checkbox"] { width:16px; height:16px; accent-color:var(--primary); }
+  /* 带单位的输入框：单位贴在右侧，输入框只留数值 */
+  .input-suffix { display:inline-flex; align-items:center; gap:8px; }
+  .input-suffix > span { color:var(--muted); font-size:13px; white-space:nowrap; }
+  .monitor-stats { margin-bottom:18px; }
+  th,td { padding:13px 14px; text-align:left; font-size:12px; border-bottom:1px solid var(--border); font-variant-numeric:tabular-nums; }
+  th { background:var(--surface-soft); color:var(--muted); font-weight:600; white-space:nowrap; }
+  tbody tr:last-child td { border-bottom:0; }
+  tbody tr:hover td { background:var(--row-hover); }
+  td.num { text-align:right; }
+  .empty-cell { color:var(--muted); text-align:center; padding:32px 14px; }
+
+  /* 登录方式切换 */
+  .segmented { display:inline-flex; padding:3px; background:var(--surface-soft); border:1px solid var(--border); border-radius:8px; gap:3px; }
+  .segmented button { border:0; background:transparent; color:var(--muted); border-radius:6px; padding:7px 14px; font-size:13px; white-space:nowrap; }
+  .segmented button[aria-selected="true"] { background:var(--surface); color:var(--primary); font-weight:600; box-shadow:var(--shadow-sm); }
+  .auth-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:18px; align-items:start; }
+  .steps { display:grid; gap:12px; }
+  .step-item { display:flex; gap:10px; align-items:flex-start; font-size:13px; color:var(--muted); }
+  .step-dot { width:20px; height:20px; flex:none; border-radius:50%; display:grid; place-items:center; font-size:11px; font-weight:600; background:var(--surface-soft); color:var(--muted); border:1px solid var(--border); }
+  .step-item.done .step-dot { background:var(--success-soft); color:var(--success); border-color:#BBF7D0; }
+  .step-item.active .step-dot { background:var(--primary-soft); color:var(--primary); border-color:var(--primary-border); }
+  .step-item.active { color:var(--text); font-weight:500; }
+
+  /* 滑块 */
+  .slider-panel { display:flex; flex-direction:column; align-items:center; gap:14px; }
+  .stage { position:relative; width:320px; max-width:100%; aspect-ratio:2/1; border-radius:10px; overflow:hidden; background:#0F172A center/cover no-repeat; border:1px solid var(--border); touch-action:none; user-select:none; }
+  .stage:focus-visible { outline:2px solid var(--ring); outline-offset:3px; }
+  .piece { position:absolute; top:0; left:0; height:100%; background-repeat:no-repeat; cursor:grab; filter:drop-shadow(0 2px 6px rgba(15,23,42,.45)); }
+  .piece.dragging { cursor:grabbing; }
+  .track { position:relative; width:320px; max-width:100%; height:8px; border-radius:99px; background:#E2E8F0; overflow:hidden; }
+  .track > i { display:block; height:100%; width:0; background:var(--primary); }
+  .stage-actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+
+  /* 日志 */
+  #logBox { color:var(--text); background:var(--surface); border:1px solid var(--border); padding:14px 16px; border-radius:8px; font:12px/1.85 Menlo,monospace; height:calc(100vh - 300px); min-height:320px; overflow-y:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #logBox > div { padding:1px 0; }
+  #logBox .WARN { color:var(--warning); }
+  #logBox .ERROR { color:var(--danger); }
+  #logBox .SUCCESS { color:var(--success); }
+  .log-toolbar { align-items:center; }
+  .log-toolbar select, .log-toolbar input { min-width:0; }
+  .log-toolbar select { max-width:180px; }
+  .log-toolbar input[type="search"] { flex:1; min-width:180px; }
+  .log-empty { color:var(--muted); }
+
+  /* 更新输出 */
+  #updateOutput { background:#0F172A; color:#E2E8F0; padding:14px; border-radius:8px; font:12px/1.7 Menlo,monospace; max-height:320px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+  #updateOutput:empty { display:none; }
+  .session-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
+  .session-item { border:1px solid var(--border); border-radius:9px; padding:14px; background:var(--surface-soft); }
+  .session-item .k { color:var(--muted); font-size:12px; }
+  .session-item .v { font-weight:600; margin-top:5px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+
+  /* ---------- 弹窗（版本信息 / 系统更新） ---------- */
+  .modal { position:fixed; inset:0; margin:auto; width:640px; max-width:calc(100vw - 32px); max-height:calc(100dvh - 64px); border:1px solid var(--border); border-radius:14px; color:var(--text); background:var(--surface); padding:0; box-shadow:0 24px 60px rgba(15,23,42,.22); overflow:hidden; }
+  .modal::backdrop { background:rgba(15,23,42,.45); }
+  .modal[open] { display:flex; flex-direction:column; min-height:0; }
+  .modal header { flex:none; padding:16px 22px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .modal header h3 { margin:0; font-size:15px; }
+  .modal .body { flex:1; min-height:0; overflow-y:auto; padding:22px; }
+  .modal footer { flex:none; display:flex; justify-content:flex-end; align-items:center; gap:10px; padding:14px 22px; border-top:1px solid var(--border); background:var(--surface-soft); }
+  .modal footer .hint { margin:0 auto 0 0; }
+  .modal .version-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:18px; }
+  .icon-close { border:0; background:transparent; font-size:20px; line-height:1; color:var(--muted); padding:4px 8px; border-radius:6px; }
+  .icon-close:hover { background:var(--soft); color:var(--text); }
+
+  @media(max-width:1023px) {
+    .app-layout { grid-template-columns:minmax(0,1fr); }
+    .sidebar { position:static; height:auto; flex-direction:row; align-items:center; gap:10px; padding:12px 16px; overflow-x:auto; border-right:0; border-bottom:1px solid var(--border); }
+    .brand { flex:none; padding:0; }
+    .brand-text { flex-direction:row; align-items:center; }
+    .brand-name { display:none; }
+    .sidebar-nav { display:flex; gap:6px; }
+    .nav-caption,.sidebar-bottom { display:none; }
+    .nav-group { display:flex; gap:6px; }
+    .nav-link { padding:9px 12px; white-space:nowrap; }
+    .auth-grid { grid-template-columns:minmax(0,1fr); }
+  }
+  @media(max-width:767px) {
+    main { padding:18px 16px 40px; }
+    .topbar { padding:12px 16px; }
+    h1 { font-size:20px; }
+    .stat-grid { grid-template-columns:minmax(0,1fr); gap:12px; }
+    .stat .num { font-size:22px; }
+    .stage, .track { width:100%; }
+  }
+  @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+</style>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:none">
+  <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 14c0-4 3.6-7 8-7s8 3 8 7M8 17h8M12 7V4"/></symbol>
+  <symbol id="i-login" viewBox="0 0 24 24"><path d="M14 3h5v18h-5M9 12H3m0 0 3-3m-3 3 3 3"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24"><path d="M3 3v18h18M7 15l4-5 4 2 6-8"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 9 4v6c0 5-9 9-9 9s-9-4-9-9V7l9-4Zm-5 9 3 3 6-6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 19V5m0 0-6 6m6-6 6 6M4 21h16"/></symbol>
+  <symbol id="i-log" viewBox="0 0 24 24"><path d="M5 3h14v18H5zM8 7h8m-8 5h8m-8 5h5"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 24 24"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18v-1"/><path d="m12 14 4-4"/><path d="M4 18h3m10 0h3"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24"><path d="M9 3H4v18h5m6-15 6 6-6 6m-7-6h13"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6M20 5v6h-6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M4.5 21v-2.4A5.6 5.6 0 0 1 10.1 13h3.8a5.6 5.6 0 0 1 5.6 5.6V21"/></symbol>
+</svg>
+
+<!-- ============ 管理员登录 ============ -->
+<section class="auth-screen" id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-signal"></use></svg></span>
+      <h1>电信话费流量监控</h1>
+    </div>
+    <div class="hint" id="authHint">正在读取登录状态…</div>
+
+    <form id="passwordLoginForm" hidden>
+      <label for="adminUsername">管理员用户名</label>
+      <input id="adminUsername" name="username" autocomplete="username" required>
+      <label for="adminPassword">管理员密码</label>
+      <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+      <button class="btn" type="submit" id="loginSubmit">登录</button>
+    </form>
+
+    <form id="totpLoginForm" hidden>
+      <label for="totpCode">认证器动态验证码</label>
+      <input id="totpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required>
+      <button class="btn" type="submit">完成双因素认证</button>
+      <button class="btn gray" type="button" id="totpCancel" style="width:100%;margin-top:10px">返回密码登录</button>
+    </form>
+
+    <div class="auth-error" id="authError" role="alert"></div>
+  </div>
+</section>
+
+<!-- ============ 管理台 ============ -->
+<div class="app-layout" id="appShell" hidden>
+  <aside class="sidebar" aria-label="主导航">
+    <div class="brand">
+      <span class="brand-mark"><svg class="icon" aria-hidden="true"><use href="#i-signal"></use></svg></span>
+      <span class="brand-text">
+        <span class="brand-name">电信助手</span>
+        <button class="version-badge" type="button" id="versionBadge" onclick="openUpdateModal()" title="查看版本与更新">v—</button>
+      </span>
+    </div>
+    <nav class="sidebar-nav" aria-label="功能导航">
+      <div class="nav-group">
+        <span class="nav-caption">业务</span>
+        <button class="nav-link active" type="button" data-panel="usage" aria-selected="true">
+          <svg class="icon" aria-hidden="true"><use href="#i-chart"></use></svg><span>用量概览</span>
+        </button>
+        <button class="nav-link" type="button" data-panel="telecom" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-login"></use></svg><span>电信账号</span>
+        </button>
+        <button class="nav-link" type="button" data-panel="monitor" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-gauge"></use></svg><span>流量监控</span>
+        </button>
+        <button class="nav-link" type="button" data-panel="logs" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-log"></use></svg><span>运行日志</span>
+        </button>
+      </div>
+      <div class="nav-group">
+        <span class="nav-caption">管理</span>
+        <button class="nav-link" type="button" data-panel="mail" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-mail"></use></svg><span>邮箱配置</span>
+        </button>
+        <button class="nav-link" type="button" data-panel="security" aria-selected="false">
+          <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg><span>安全设置</span>
+        </button>
+      </div>
+    </nav>
+    <div class="sidebar-bottom">
+      <span class="sidebar-user"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg><span id="sidebarUser">—</span></span>
+      <button class="btn gray small" type="button" id="logoutButton">
+        <svg class="icon" aria-hidden="true"><use href="#i-logout"></use></svg>退出
+      </button>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="header-account">
+        <span class="account-avatar"><svg class="icon" aria-hidden="true"><use href="#i-user"></use></svg></span>
+        <div>
+          <div class="header-label">管理员</div>
+          <strong id="topUsername">—</strong>
+        </div>
+      </div>
+      <div class="header-right">
+        <span class="badge gray" id="twoFactorBadge">2FA：—</span>
+        <span class="badge gray" id="telecomBadge">电信账号：检测中</span>
+      </div>
+    </header>
+
+    <main>
+      <!-- 用量概览 -->
+      <div class="panel active" id="panel-usage">
+        <div class="page-heading">
+          <div>
+            <h1>用量概览</h1>
+            <p class="subtitle">查看话费余额、流量和语音的使用情况</p>
+          </div>
+          <div class="heading-actions">
+            <button class="btn gray" type="button" id="refreshUsage">
+              <svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>刷新数据
+            </button>
+          </div>
+        </div>
+        <p class="panel-message" id="usageError" role="alert"></p>
+        <div class="stat-grid">
+          <div class="stat"><div class="label">话费余额</div><div class="num" id="sBalance">—</div></div>
+          <div class="stat">
+            <div class="label">总流量</div>
+            <div class="num" id="sFlow">—</div>
+            <div class="remaining" id="sFlowLeft">剩余 —</div>
+            <div class="meter"><i id="sFlowBar"></i></div>
+          </div>
+          <div class="stat">
+            <div class="label">通用流量</div>
+            <div class="num" id="sGeneral">—</div>
+            <div class="remaining" id="sGeneralLeft">剩余 —</div>
+            <div class="meter"><i id="sGeneralBar"></i></div>
+          </div>
+          <div class="stat">
+            <div class="label">语音通话</div>
+            <div class="num" id="sVoice">—</div>
+            <div class="remaining" id="sVoiceLeft">剩余 —</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>流量明细 <span class="hint tight" id="flowHint">登录电信账号后自动加载</span></h3>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>套餐</th><th style="text-align:right">已用</th><th style="text-align:right">总量</th></tr></thead>
+              <tbody id="sItems"><tr><td class="empty-cell" colspan="3">暂无数据</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 电信账号 -->
+      <div class="panel" id="panel-telecom">
+        <div class="page-heading">
+          <div>
+            <h1>电信账号</h1>
+            <p class="subtitle">用短信验证码登录电信账号，也可以改用密码登录</p>
+          </div>
+          <div class="segmented" role="tablist" aria-label="登录方式">
+            <button type="button" role="tab" id="tabSms" aria-selected="true">验证码</button>
+            <button type="button" role="tab" id="tabPwd" aria-selected="false">密码</button>
+          </div>
+        </div>
+
+        <div class="session-grid" id="telecomSession" style="margin-bottom:18px"></div>
+        <p class="panel-message" id="telecomError" role="alert"></p>
+
+        <div class="auth-grid">
+          <div id="smsPane" role="tabpanel" aria-labelledby="tabSms">
+            <div class="card">
+              <h3>登录步骤</h3>
+              <div class="steps">
+                <div class="step-item active" id="stepPhone"><span class="step-dot">1</span><span>填写手机号并获取验证码</span></div>
+                <div class="step-item" id="stepSlide"><span class="step-dot">2</span><span>按提示拖动拼图完成验证</span></div>
+                <div class="step-item" id="stepCode"><span class="step-dot">3</span><span>输入短信验证码完成登录</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>手机号登录</h3>
+              <div class="form-field">
+                <label for="phone">电信手机号</label>
+                <input id="phone" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="11 位手机号" aria-describedby="phoneError">
+                <p class="field-error" id="phoneError" role="alert"></p>
+              </div>
+              <div class="form-field" id="codeField" hidden>
+                <label for="code">短信验证码</label>
+                <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="短信里的数字验证码" aria-describedby="codeError">
+                <p class="field-error" id="codeError" role="alert"></p>
+              </div>
+              <div class="heading-actions">
+                <button class="btn" type="button" id="btnSend">发送验证码</button>
+                <button class="btn gray" type="button" id="btnLogin" hidden>登录</button>
+              </div>
+              <p class="hint" id="smsHint">需要时页面会自动弹出拼图，拖到缺口松手即可。</p>
+            </div>
+          </div>
+
+          <div id="pwdPane" role="tabpanel" aria-labelledby="tabPwd" hidden>
+            <div class="card">
+              <h3>密码登录</h3>
+              <p class="hint tight" style="margin-bottom:16px">输入电信 App 的登录密码即可。若这次需要验证码，页面会提示你切换过去。</p>
+              <div class="form-field">
+                <label for="pwdPhone">电信手机号</label>
+                <input id="pwdPhone" inputmode="numeric" autocomplete="username" maxlength="11" placeholder="11 位手机号" aria-describedby="pwdPhoneError">
+                <p class="field-error" id="pwdPhoneError" role="alert"></p>
+              </div>
+              <div class="form-field">
+                <label for="pwdPass">电信 App 登录密码</label>
+                <input id="pwdPass" type="password" autocomplete="current-password" placeholder="注意：与网页版 h5 密码不同" aria-describedby="pwdPassError">
+                <p class="field-error" id="pwdPassError" role="alert"></p>
+              </div>
+              <button class="btn" type="button" id="btnPwdLogin">登录</button>
+            </div>
+          </div>
+
+          <div id="slideCard" hidden>
+            <div class="card">
+              <h3>拖动拼图到缺口 <span class="badge blue" id="slideTag">滑块验证</span></h3>
+              <div class="slider-panel">
+                <div class="stage" id="stage" tabindex="0" role="group"
+                     aria-label="滑块验证区，按住拼图拖动；也可用左右方向键调整位置后按回车提交">
+                  <div class="piece" id="piece"></div>
+                </div>
+                <div class="track" aria-hidden="true"><i id="bar"></i></div>
+                <p class="hint tight" id="slideHint">按住拼图向右拖动，对准缺口后松开即可。</p>
+                <div class="stage-actions">
+                  <button class="btn gray small" type="button" id="btnReload">换一张</button>
+                  <button class="btn small" type="button" id="btnSlideSubmit">提交验证</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 流量监控 -->
+      <div class="panel" id="panel-monitor">
+        <div class="page-heading">
+          <div>
+            <h1>流量监控</h1>
+            <p class="subtitle">通用流量快用完时，自动发邮件提醒你</p>
+          </div>
+          <div class="heading-actions">
+            <button class="btn gray" type="button" id="monitorCheck">立即检测</button>
+            <button class="btn" type="button" id="monitorSave">保存设置</button>
+          </div>
+        </div>
+        <p class="panel-message" id="monitorError" role="alert"></p>
+
+        <div class="stat-grid monitor-stats">
+          <div class="stat">
+            <span class="label">通用流量剩余</span>
+            <span class="num" id="monitorRemaining">—</span>
+            <span class="remaining" id="monitorTotalHint">还没检查过</span>
+          </div>
+          <div class="stat">
+            <span class="label">提醒线</span>
+            <span class="num" id="monitorThresholdView">—</span>
+            <span class="remaining" id="monitorArmedHint">还没开始检查</span>
+          </div>
+          <div class="stat">
+            <span class="label">下次检查</span>
+            <span class="num" id="monitorNextRun">—</span>
+            <span class="remaining" id="monitorIntervalHint">还没设置间隔</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>提醒规则</h3>
+          <div class="toolbar">
+            <label class="check-line"><input type="checkbox" id="monitorEnabled">开启流量提醒</label>
+            <span class="hint tight">关掉后只是不发邮件，流量照样会定时刷新</span>
+          </div>
+          <div class="form-grid">
+            <label class="form-field">剩余多少 GB 时提醒
+              <span class="input-suffix">
+                <input id="monitorThreshold" type="number" inputmode="decimal" min="0" step="0.01" placeholder="例如 10">
+                <span>GB</span>
+              </span>
+            </label>
+            <label class="form-field">最少隔几秒查一次
+              <input id="monitorIntervalMin" type="number" inputmode="numeric" min="5" max="60" step="1" placeholder="5">
+            </label>
+            <label class="form-field">最多隔几秒查一次
+              <input id="monitorIntervalMax" type="number" inputmode="numeric" min="5" max="60" step="1" placeholder="10">
+            </label>
+          </div>
+          <p class="hint">检查间隔在两个数字之间随机；剩余低于提醒线时发邮件，同一情况最多半小时提醒一次。</p>
+          <p class="hint" id="monitorSmtpHint"></p>
+        </div>
+
+        <div class="card">
+          <h3>提醒发给谁</h3>
+          <label class="form-field wide">填要收提醒的邮箱
+            <textarea id="monitorRecipients" rows="4" spellcheck="false" placeholder="每行一个邮箱"></textarea>
+          </label>
+          <p class="hint" id="monitorRecipientsHint">只用于收流量提醒。</p>
+        </div>
+
+        <div class="card">
+          <h3>
+            <span>提醒记录</span>
+            <button class="btn gray small" type="button" id="monitorClearRecords">清空记录</button>
+          </h3>
+          <div class="table-wrap">
+            <table id="monitorRecordsTable">
+              <thead><tr><th>时间</th><th>当时剩余流量</th><th>提醒线</th><th>为什么提醒</th><th>发给了谁</th><th>结果</th></tr></thead>
+              <tbody><tr><td class="empty-cell" colspan="6">加载中…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="hint">只保留最近 200 条。</p>
+        </div>
+      </div>
+
+      <!-- 邮箱配置 -->
+      <div class="panel" id="panel-mail">
+        <div class="page-heading">
+          <div>
+            <h1>邮箱配置</h1>
+            <p class="subtitle">填写用哪个邮箱发提醒；收件人在「流量监控」页填写</p>
+          </div>
+          <div class="heading-actions">
+            <button class="btn" type="button" id="mailSave">保存设置</button>
+          </div>
+        </div>
+        <p class="panel-message" id="mailError" role="alert"></p>
+
+        <div class="card">
+          <h3>用哪个邮箱发出去</h3>
+          <p class="hint tight">去邮箱网站的「设置」里找这几项，不是登录密码。</p>
+          <div class="form-grid">
+            <label class="form-field">邮箱服务器
+              <input id="mailHost" autocomplete="off" spellcheck="false" placeholder="smtp.qq.com">
+            </label>
+            <label class="form-field">端口
+              <input id="mailPort" type="number" inputmode="numeric" min="1" max="65535" placeholder="465">
+            </label>
+            <label class="form-field">加密方式
+              <select id="mailEncryption">
+                <option value="auto">自动选（推荐）</option>
+                <option value="ssl">一直加密（一般都是这个）</option>
+                <option value="starttls">先聊后加密</option>
+                <option value="none">不加密（只在自己搭的服务器上用）</option>
+              </select>
+            </label>
+            <label class="form-field">邮箱账号
+              <input id="mailUsername" autocomplete="off" spellcheck="false" placeholder="you@qq.com">
+            </label>
+            <label class="form-field">授权码 / 密码
+              <input id="mailPassword" type="password" autocomplete="new-password" spellcheck="false" placeholder="授权码">
+            </label>
+            <label class="form-field">显示的发件人
+              <input id="mailFrom" autocomplete="off" spellcheck="false" placeholder="默认同上">
+            </label>
+          </div>
+          <p class="hint">QQ、163 邮箱要先开启 POP3/SMTP 服务，用授权码而不是登录密码。</p>
+        </div>
+
+        <div class="card" id="mailTestCard">
+          <h3>先试一发</h3>
+          <p class="hint tight">不用先保存，直接试。</p>
+          <div class="form-grid">
+            <label class="form-field wide">发给哪个邮箱
+              <input id="mailTestRecipient" type="email" autocomplete="off" spellcheck="false" placeholder="you@qq.com">
+            </label>
+          </div>
+          <div class="toolbar">
+            <button class="btn" type="button" id="mailTestSend">发一封试试</button>
+            <span class="hint tight" id="mailStatus" role="status" aria-live="polite"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 安全设置 -->
+      <div class="panel" id="panel-security">
+        <div class="page-heading">
+          <div>
+            <h1>安全设置</h1>
+            <p class="subtitle">修改登录账号与密码，管理双因素认证</p>
+          </div>
+        </div>
+        <p class="panel-message" id="securityError" role="alert"></p>
+        <p class="panel-message" id="securityOk" role="alert" style="border-color:#BBF7D0;background:var(--success-soft);color:var(--success)"></p>
+
+        <div class="card">
+          <h3>修改登录账号</h3>
+          <div class="form-field">
+            <label for="newUsername">新用户名</label>
+            <input id="newUsername" autocomplete="username">
+          </div>
+          <div class="form-field">
+            <label for="usernamePassword">当前密码</label>
+            <input id="usernamePassword" type="password" autocomplete="current-password">
+          </div>
+          <button class="btn" type="button" id="saveUsername">保存用户名</button>
+        </div>
+
+        <div class="card">
+          <h3>修改登录密码</h3>
+          <div class="form-field">
+            <label for="currentPassword">当前密码</label>
+            <input id="currentPassword" type="password" autocomplete="current-password">
+          </div>
+          <div class="form-field">
+            <label for="newPassword">新密码（至少 6 个字符）</label>
+            <input id="newPassword" type="password" autocomplete="new-password">
+          </div>
+          <div class="form-field">
+            <label for="confirmPassword">确认新密码</label>
+            <input id="confirmPassword" type="password" autocomplete="new-password">
+          </div>
+          <button class="btn" type="button" id="savePassword">保存密码</button>
+        </div>
+
+        <div class="card">
+          <h3>双因素认证 <span class="badge gray" id="totpStateBadge">检测中</span></h3>
+          <div id="totpDisabledBox" hidden>
+            <p class="hint tight" style="margin-bottom:14px">开启后，每次登录除密码外还要输入手机认证器上的 6 位动态码，更安全。</p>
+            <div class="form-field">
+              <label for="totpSetupPassword">当前密码</label>
+              <input id="totpSetupPassword" type="password" autocomplete="current-password">
+            </div>
+            <button class="btn" type="button" id="startTOTP">生成二维码</button>
+            <div id="totpSetupBox" hidden>
+              <img class="qr-image" id="totpQR" alt="认证器二维码">
+              <p class="hint tight">用认证器 App（如 Google Authenticator）扫码，或手动输入下面的密钥：</p>
+              <div class="secret-value" id="totpSecret"></div>
+              <div class="form-field" style="margin-top:14px">
+                <label for="totpEnableCode">认证器上的 6 位动态码</label>
+                <input id="totpEnableCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}">
+              </div>
+              <button class="btn" type="button" id="enableTOTP">启用双因素认证</button>
+            </div>
+          </div>
+          <div id="totpEnabledBox" hidden>
+            <div class="form-field">
+              <label for="totpDisablePassword">当前密码</label>
+              <input id="totpDisablePassword" type="password" autocomplete="current-password">
+            </div>
+            <div class="form-field">
+              <label for="totpDisableCode">认证器上的 6 位动态码</label>
+              <input id="totpDisableCode" inputmode="numeric" maxlength="6" pattern="[0-9]{6}">
+            </div>
+            <button class="btn red" type="button" id="disableTOTP">停用双因素认证</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 运行日志 -->
+      <div class="panel" id="panel-logs">
+        <div class="page-heading">
+          <div>
+            <h1>运行日志</h1>
+            <p class="subtitle">查看程序运行记录，按日期、级别与关键词筛选</p>
+          </div>
+        </div>
+        <div class="toolbar log-toolbar">
+          <select id="logDate" aria-label="日志日期"></select>
+          <select id="logLevel" aria-label="日志级别">
+            <option value="">全部级别</option>
+            <option value="INFO">INFO</option>
+            <option value="WARN">WARN</option>
+            <option value="SUCCESS">SUCCESS</option>
+            <option value="ERROR">ERROR</option>
+            <option value="DEBUG">DEBUG</option>
+          </select>
+          <input id="logKeyword" type="search" placeholder="关键词（手机号 / 错误信息）" aria-label="日志关键词">
+          <button class="btn small" type="button" id="logQuery">查询</button>
+          <button class="btn gray small" type="button" id="logAuto" aria-pressed="false">自动刷新</button>
+          <button class="btn gray small" type="button" id="logFollow">跟随最新</button>
+        </div>
+        <p class="panel-message" id="logsError" role="alert"></p>
+        <div id="logBox" role="log" aria-label="运行日志">加载中…</div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ 版本与更新弹窗 ============ -->
+<dialog class="modal" id="updateModal" aria-labelledby="updateModalTitle">
+  <header>
+    <h3 id="updateModalTitle">版本与更新</h3>
+    <button class="icon-close" type="button" id="updateModalClose" aria-label="关闭">×</button>
+  </header>
+  <div class="body">
+    <p class="panel-message" id="systemError" role="alert"></p>
+    <div class="version-grid" id="versionInfo"></div>
+    <p class="hint tight" id="updateHint">检查中…</p>
+    <div id="updateOutput" style="margin-top:14px"></div>
+  </div>
+  <footer>
+    <span class="hint" id="updateFootnote"></span>
+    <button class="btn gray small" type="button" id="checkVersion">检查更新</button>
+    <button class="btn small" type="button" id="startUpdate" disabled>更新到最新版本</button>
+  </footer>
+</dialog>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const logBox = $('logBox');
+let csrfToken = '';
+let authState = {authenticated: false, stage: 'password'};
+
+/* ---------- 通用 ---------- */
+// log 记录页面操作：控制台留痕即可，页面上的「运行日志」展示服务端磁盘日志
+function log(msg, level) {
+  if (level === 'error') console.error(msg);
+  else if (level === 'warn') console.warn(msg);
+  else console.log(msg);
+}
+
+async function request(path, options) {
+  const opts = Object.assign({method: 'GET', headers: {}}, options || {});
+  opts.headers['X-CSRF-Token'] = csrfToken;
+  if (opts.body !== undefined) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(opts.body);
+  }
+  const resp = await fetch(path, opts);
+  let payload = null;
+  try { payload = await resp.json(); } catch (e) { payload = {error: '响应不是 JSON'}; }
+  if (resp.status === 401 && authState.authenticated) {
+    // 会话失效：回到登录界面
+    showAuth();
+  }
+  return {status: resp.status, body: payload || {}};
+}
+
+function setMessage(id, text) { $(id).textContent = text || ''; }
+
+/* ---------- 登录 ---------- */
+function showAuth() {
+  $('appShell').hidden = true;
+  $('authScreen').hidden = false;
+  $('passwordLoginForm').hidden = authState.stage !== 'password';
+  $('totpLoginForm').hidden = authState.stage !== 'totp';
+  $('authHint').textContent = authState.stage === 'totp'
+    ? '请输入认证器上的 6 位动态验证码'
+    : '请输入管理员用户名与密码';
+}
+
+function showApp(state) {
+  authState = state;
+  $('authScreen').hidden = true;
+  $('appShell').hidden = false;
+  $('topUsername').textContent = state.username || '—';
+  $('sidebarUser').textContent = state.username || '—';
+  $('twoFactorBadge').textContent = '2FA：' + (state.twoFactorEnabled ? '已启用' : '未启用');
+  $('twoFactorBadge').className = 'badge ' + (state.twoFactorEnabled ? 'green' : 'gray');
+  $('totpStateBadge').textContent = state.twoFactorEnabled ? '已启用' : '未启用';
+  $('totpStateBadge').className = 'badge ' + (state.twoFactorEnabled ? 'green' : 'gray');
+  $('totpDisabledBox').hidden = state.twoFactorEnabled;
+  $('totpEnabledBox').hidden = !state.twoFactorEnabled;
+  loadUsage();
+  loadTelecomSession();
+  refreshVersionBadge();
+}
+
+// refreshVersionBadge 只刷新侧边栏版本号徽标，不打开弹窗
+async function refreshVersionBadge() {
+  const r = await request('/api/system/version');
+  $('versionBadge').textContent = 'v' + (r.body.current || '—');
+  $('versionBadge').className = 'version-badge' + (r.body.hasUpdate ? ' update' : '');
+}
+
+async function refreshAuthStatus() {
+  const resp = await fetch('/api/auth/status');
+  const body = await resp.json();
+  authState = body;
+  csrfToken = body.csrfToken || '';
+  if (body.authenticated) {
+    showApp(body);
+  } else {
+    showAuth();
+  }
+}
+
+$('passwordLoginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  setMessage('authError', '');
+  const username = $('adminUsername').value.trim();
+  const password = $('adminPassword').value;
+  const r = await request('/api/auth/login', {method: 'POST', body: {username, password}});
+  if (r.status === 200 && r.body.authenticated) {
+    csrfToken = r.body.csrfToken || '';
+    $('adminPassword').value = '';
+    showApp(r.body);
+    return;
+  }
+  if (r.status === 202 && r.body.stage === 'totp') {
+    authState = {stage: 'totp'};
+    csrfToken = r.body.csrfToken || '';
+    $('adminPassword').value = '';
+    showAuth();
+    $('totpCode').focus();
+    return;
+  }
+  setMessage('authError', r.body.error || '登录失败');
+});
+
+$('totpLoginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  setMessage('authError', '');
+  const code = $('totpCode').value.trim();
+  const r = await request('/api/auth/2fa/verify', {method: 'POST', body: {code}});
+  if (r.status === 200 && r.body.authenticated) {
+    csrfToken = r.body.csrfToken || '';
+    $('totpCode').value = '';
+    showApp(r.body);
+    return;
+  }
+  setMessage('authError', r.body.error || '动态验证码错误');
+});
+
+$('totpCancel').addEventListener('click', async () => {
+  await request('/api/auth/2fa/cancel', {method: 'POST', body: {}});
+  authState = {stage: 'password'};
+  $('totpCode').value = '';
+  refreshAuthStatus();
+});
+
+$('logoutButton').addEventListener('click', async () => {
+  await request('/api/auth/logout', {method: 'POST', body: {}});
+  csrfToken = '';
+  authState = {stage: 'password'};
+  refreshAuthStatus();
+});
+
+/* ---------- 面板切换 ---------- */
+function showPanel(name) {
+  document.querySelectorAll('.panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + name));
+  document.querySelectorAll('.nav-link[data-panel]').forEach((b) => {
+    const on = b.dataset.panel === name;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  if (name === 'usage') loadUsage();
+  if (name === 'monitor' || name === 'mail') loadNotify();
+  if (name === 'logs') {
+    // 先取日期再查日志；两步都会自报错误，不会因为一次失败卡住面板
+    (async () => {
+      const dateError = await fillLogDates();
+      if (dateError) setMessage('logsError', dateError);
+      await loadLogs(false);
+    })();
+  }
+}
+document.querySelectorAll('.nav-link[data-panel]').forEach((btn) => {
+  btn.addEventListener('click', () => showPanel(btn.dataset.panel));
+});
+
+/* ---------- 用量 ---------- */
+function kb(v) {
+  if (v == null) return '—';
+  const gb = v / 1024 / 1024;
+  if (gb >= 1) return gb.toFixed(2) + ' GB';
+  const mb = v / 1024;
+  return mb >= 1 ? mb.toFixed(0) + ' MB' : v + ' KB';
+}
+function ratio(used, total) { return total ? Math.max(0, Math.min(100, used / total * 100)) : 0; }
+
+async function loadUsage(force) {
+  const r = force
+    ? await request('/api/usage/refresh', {method: 'POST', body: {}})
+    : await request('/api/usage');
+  if (!r.body.success) {
+    setMessage('usageError', r.body.error || '加载失败');
+    return;
+  }
+  setMessage('usageError', '');
+  const d = r.body.data || {};
+  $('sBalance').textContent = d.balance != null ? (d.balance / 100).toFixed(2) + ' 元' : '—';
+
+  // 三个用量卡：主数值为「已用 / 总量」，下方补一行剩余
+  const flowLeft = Math.max(0, (d.total || 0) - (d.use || 0));
+  $('sFlow').innerHTML = `${kb(d.use)} <small>/ ${kb(d.total)}</small>`;
+  $('sFlowLeft').innerHTML = `剩余 <b>${kb(flowLeft)}</b>`;
+  $('sFlowBar').style.width = ratio(d.use, d.total) + '%';
+
+  const generalLeft = Math.max(0, (d.generalTotal || 0) - (d.generalUse || 0));
+  $('sGeneral').innerHTML = `${kb(d.generalUse)} <small>/ ${kb(d.generalTotal)}</small>`;
+  $('sGeneralLeft').innerHTML = `剩余 <b>${kb(generalLeft)}</b>`;
+  $('sGeneralBar').style.width = ratio(d.generalUse, d.generalTotal) + '%';
+
+  const voiceLeft = Math.max(0, (d.voiceAmount || 0) - (d.voiceUsage || 0));
+  $('sVoice').innerHTML = `${d.voiceUsage || 0} <small>/ ${d.voiceAmount || 0} 分钟</small>`;
+  $('sVoiceLeft').innerHTML = `剩余 <b>${voiceLeft} 分钟</b>`;
+
+  const body = $('sItems');
+  body.innerHTML = '';
+  const items = d.items || [];
+  if (!items.length) {
+    body.innerHTML = '<tr><td class="empty-cell" colspan="3">暂无流量明细</td></tr>';
+  } else {
+    items.forEach((it) => {
+      const tr = document.createElement('tr');
+      const name = document.createElement('td');
+      name.textContent = it.name;
+      const use = document.createElement('td');
+      use.className = 'num';
+      use.textContent = kb(it.use);
+      const total = document.createElement('td');
+      total.className = 'num';
+      total.textContent = kb(it.total);
+      tr.append(name, use, total);
+      body.appendChild(tr);
+    });
+  }
+  $('flowHint').textContent = d.createTime ? '数据时间：' + d.createTime : '登录电信账号后自动加载';
+}
+$('refreshUsage').addEventListener('click', () => loadUsage(true));
+
+/* ---------- 电信账号 ---------- */
+function renderTelecomSession(s) {
+  const box = $('telecomSession');
+  box.innerHTML = '';
+  const rows = [
+    ['登录状态', s.hasToken ? '已登录' : '未登录'],
+    ['手机号', s.phone || '—'],
+    ['归属地', (s.province || '') + (s.city || '') || '—'],
+    ['保存时间', s.savedAt || '—'],
+    ['Token', s.token || '—']
+  ];
+  rows.forEach(([k, v]) => {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    const key = document.createElement('div');
+    key.className = 'k';
+    key.textContent = k;
+    const value = document.createElement('div');
+    value.className = 'v';
+    value.textContent = v;
+    item.append(key, value);
+    box.appendChild(item);
+  });
+  $('telecomBadge').textContent = '电信账号：' + (s.hasToken ? '已登录' : '未登录');
+  $('telecomBadge').className = 'badge ' + (s.hasToken ? 'green' : 'gray');
+}
+
+async function loadTelecomSession() {
+  const r = await request('/api/telecom/session');
+  if (r.body.success) {
+    renderTelecomSession(r.body);
+    if (r.body.phone) {
+      if (!$('phone').value) $('phone').value = r.body.phone;
+      if (!$('pwdPhone').value) $('pwdPhone').value = r.body.phone;
+    }
+  }
+}
+
+function setFieldError(inputId, errorId, message) {
+  const input = $(inputId);
+  const box = $(errorId);
+  if (message) {
+    input.classList.add('invalid');
+    input.setAttribute('aria-invalid', 'true');
+    box.textContent = message;
+  } else {
+    input.classList.remove('invalid');
+    input.removeAttribute('aria-invalid');
+    box.textContent = '';
+  }
+}
+
+function setStep(activeStep) {
+  ['stepPhone', 'stepSlide', 'stepCode'].forEach((id, i) => {
+    const el = $(id);
+    const index = i + 1;
+    el.classList.toggle('done', index < activeStep);
+    el.classList.toggle('active', index === activeStep);
+  });
+}
+
+function selectMethod(method) {
+  const sms = method === 'sms';
+  $('tabSms').setAttribute('aria-selected', sms ? 'true' : 'false');
+  $('tabPwd').setAttribute('aria-selected', sms ? 'false' : 'true');
+  $('smsPane').hidden = !sms;
+  $('pwdPane').hidden = sms;
+}
+$('tabSms').addEventListener('click', () => selectMethod('sms'));
+$('tabPwd').addEventListener('click', () => selectMethod('pwd'));
+
+function validPhone(value) { return /^1\d{10}$/.test(value); }
+function ensurePhone(inputId, errorId) {
+  const value = $(inputId).value.trim();
+  if (!value) { setFieldError(inputId, errorId, '请输入手机号'); $(inputId).focus(); return null; }
+  if (!validPhone(value)) { setFieldError(inputId, errorId, '手机号需要 11 位数字，且以 1 开头'); $(inputId).focus(); return null; }
+  setFieldError(inputId, errorId, '');
+  return value;
+}
+$('phone').addEventListener('blur', () => { if ($('phone').value.trim()) ensurePhone('phone', 'phoneError'); });
+$('pwdPhone').addEventListener('blur', () => { if ($('pwdPhone').value.trim()) ensurePhone('pwdPhone', 'pwdPhoneError'); });
+
+async function startFlow(inputId, errorId) {
+  const phone = ensurePhone(inputId, errorId);
+  if (!phone) return false;
+  const r = await request('/api/telecom/start', {method: 'POST', body: {phone}});
+  if (!r.body.success) {
+    setMessage('telecomError', r.body.error || '初始化失败');
+    return false;
+  }
+  setMessage('telecomError', '');
+  return true;
+}
+
+// 滑块：basePieceW 是服务端给的设计稿宽度，渲染时按实际舞台宽度等比缩放
+let challenge = null, pendingAction = null, basePieceW = 40, left = 0;
+let dragging = false, dragStartX = 0, dragStartLeft = 0, dragStartT = 0, points = [], submitting = false;
+
+function stageMetrics() {
+  const rect = $('stage').getBoundingClientRect();
+  const width = rect.width || 320;
+  const piece = Math.max(1, Math.round(basePieceW * (width / 320)));
+  return {width, height: rect.height || 160, piece, max: Math.max(1, width - piece)};
+}
+function setPiece(x) {
+  const m = stageMetrics();
+  left = Math.max(0, Math.min(m.max, x));
+  $('piece').style.left = left + 'px';
+  $('bar').style.width = (left / m.max * 100) + '%';
+  $('stage').setAttribute('aria-valuetext', `已向右滑动 ${Math.round(left / m.max * 100)}%`);
+}
+
+async function loadChallenge(resume) {
+  const r = await request('/api/telecom/challenge', {method: 'POST', body: {}});
+  if (!r.body.success) { log('获取滑块失败：' + (r.body.error || ''), 'error'); return false; }
+  challenge = r.body;
+  pendingAction = resume || null;
+  basePieceW = parseInt(String(r.body.size || '').split(',')[0], 10) || 40;
+  $('stage').style.backgroundImage = `url(data:image/png;base64,${r.body.bg})`;
+  $('piece').style.backgroundImage = `url(data:image/png;base64,${r.body.slider})`;
+  const m = stageMetrics();
+  $('piece').style.width = m.piece + 'px';
+  $('piece').style.backgroundSize = `${m.piece}px 100%`;
+  $('slideTag').textContent = resume === 'login' ? '登录校验' : '滑块验证';
+  setPiece(0);
+  points = [];
+  $('slideCard').hidden = false;
+  $('slideHint').textContent = '按住拼图向右拖动，松开即提交。键盘用户可用方向键微调后回车提交。';
+  setStep(2);
+  return true;
+}
+
+function clampY(v, h) { return Math.max(0, Math.min(h, v)); }
+
+$('piece').addEventListener('pointerdown', (e) => {
+  if (!challenge) return;
+  dragging = true;
+  $('piece').classList.add('dragging');
+  $('piece').setPointerCapture(e.pointerId);
+  dragStartX = e.clientX;
+  dragStartLeft = left;
+  dragStartT = performance.now();
+  const rect = $('stage').getBoundingClientRect();
+  points = [{x: left, y: clampY(e.clientY - rect.top, rect.height), t: 0}];
+});
+$('piece').addEventListener('pointermove', (e) => {
+  if (!dragging) return;
+  setPiece(dragStartLeft + (e.clientX - dragStartX));
+  const rect = $('stage').getBoundingClientRect();
+  const t = performance.now() - dragStartT;
+  const last = points[points.length - 1];
+  if (!last || t - last.t > 12) {
+    points.push({x: left, y: clampY(e.clientY - rect.top, rect.height), t});
+  }
+});
+$('piece').addEventListener('pointerup', (e) => {
+  if (!dragging) return;
+  dragging = false;
+  $('piece').classList.remove('dragging');
+  const rect = $('stage').getBoundingClientRect();
+  points.push({x: left, y: clampY(e.clientY - rect.top, rect.height), t: performance.now() - dragStartT});
+  submitSlide();
+});
+
+// 键盘替代操作（WCAG 2.2 拖动操作的单指/键盘替代）
+$('stage').addEventListener('keydown', (e) => {
+  if (!challenge) return;
+  const step = e.shiftKey ? 10 : 2;
+  const m = stageMetrics();
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+    e.preventDefault();
+    setPiece(left + (e.key === 'ArrowRight' ? step : -step));
+    if (!points.length) points = [{x: 0, y: m.height / 2, t: 0}];
+    points.push({x: left, y: m.height / 2, t: points.length * 16});
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    submitSlide();
+  } else if (e.key === 'Home') {
+    e.preventDefault();
+    setPiece(0);
+  } else if (e.key === 'End') {
+    e.preventDefault();
+    setPiece(m.max);
+  }
+});
+$('btnSlideSubmit').addEventListener('click', () => submitSlide());
+$('btnReload').addEventListener('click', () => loadChallenge(pendingAction));
+
+async function submitSlide() {
+  if (!challenge || submitting) return;
+  submitting = true;
+  $('slideHint').textContent = '正在校验…';
+  const m = stageMetrics();
+  const r = await request('/api/telecom/verify', {
+    method: 'POST',
+    body: {left, imgW: m.width, pieceW: m.piece, track: points}
+  });
+  submitting = false;
+  if (!r.body.success) {
+    log('滑块校验失败：' + (r.body.error || ''), 'error');
+    $('slideHint').textContent = '校验失败，点「换一张」重新滑动。';
+    setPiece(0);
+    points = [];
+    return;
+  }
+  log('滑块校验通过', 'success');
+  $('slideCard').hidden = true;
+  challenge = null;
+  const action = pendingAction;
+  pendingAction = null;
+  if (action === 'sms') await sendSms(true);
+  else if (action === 'login') await submitLogin(true);
+}
+
+async function sendSms(skipPhoneCheck) {
+  if (!skipPhoneCheck && !(await startFlow('phone', 'phoneError'))) return;
+  $('btnSend').disabled = true;
+  const r = await request('/api/telecom/sms', {method: 'POST', body: {}});
+  $('btnSend').disabled = false;
+  if (r.body.needSlider) {
+    log('需要滑块验证', 'warn');
+    $('smsHint').textContent = '这次需要滑块验证，请先拖动右侧拼图。';
+    await loadChallenge('sms');
+    return;
+  }
+  if (!r.body.success) {
+    setMessage('telecomError', r.body.error || '发送失败');
+    log('发送失败：' + (r.body.error || ''), 'error');
+    return;
+  }
+  setMessage('telecomError', '');
+  log('短信已发送' + (r.body.smsId ? '（smsId=' + r.body.smsId + '）' : ''), 'success');
+  $('smsHint').textContent = '短信已发送，验证码一次性有效。';
+  $('codeField').hidden = false;
+  $('btnLogin').hidden = false;
+  $('btnSend').textContent = '重新发送';
+  setStep(3);
+  $('code').focus();
+}
+
+async function submitLogin(skipPhoneCheck) {
+  const code = $('code').value.trim();
+  if (!code) { setFieldError('code', 'codeError', '请输入短信验证码'); $('code').focus(); return; }
+  setFieldError('code', 'codeError', '');
+  if (!skipPhoneCheck && !(await startFlow('phone', 'phoneError'))) return;
+  $('btnLogin').disabled = true;
+  const r = await request('/api/telecom/login', {method: 'POST', body: {code}});
+  $('btnLogin').disabled = false;
+  if (r.body.needSlider) {
+    log('登录需要滑块验证', 'warn');
+    $('smsHint').textContent = '这次需要滑块验证，请先拖动右侧拼图。';
+    await loadChallenge('login');
+    return;
+  }
+  if (!r.body.success) {
+    setMessage('telecomError', r.body.error || '登录失败');
+    log('登录失败：' + (r.body.error || ''), 'error');
+    return;
+  }
+  onTelecomLoggedIn(r.body);
+}
+
+function onTelecomLoggedIn(res) {
+  setMessage('telecomError', '');
+  log('电信账号登录成功' + (res.province ? `（${res.province}${res.city || ''}）` : ''), 'success');
+  $('smsHint').textContent = '已登录。验证码已使用，如需重新登录请重新发送。';
+  setStep(4);
+  loadTelecomSession();
+  loadUsage(true);
+}
+
+$('btnSend').addEventListener('click', () => sendSms(false));
+$('btnLogin').addEventListener('click', () => submitLogin(false));
+
+$('btnPwdLogin').addEventListener('click', async () => {
+  const phone = ensurePhone('pwdPhone', 'pwdPhoneError');
+  if (!phone) return;
+  const password = $('pwdPass').value;
+  if (!password) { setFieldError('pwdPass', 'pwdPassError', '请输入电信 App 登录密码'); $('pwdPass').focus(); return; }
+  setFieldError('pwdPass', 'pwdPassError', '');
+  $('btnPwdLogin').disabled = true;
+  const started = await request('/api/telecom/start', {method: 'POST', body: {phone}});
+  if (!started.body.success) {
+    $('btnPwdLogin').disabled = false;
+    setMessage('telecomError', started.body.error || '初始化失败');
+    return;
+  }
+  const r = await request('/api/telecom/password-login', {method: 'POST', body: {phone, password}});
+  $('btnPwdLogin').disabled = false;
+  if (!r.body.success) {
+    setMessage('telecomError', r.body.error || '登录失败');
+    log('密码登录失败：' + (r.body.error || ''), 'error');
+    return;
+  }
+  $('pwdPass').value = '';
+  onTelecomLoggedIn(r.body);
+});
+
+/* ---------- 安全设置 ---------- */
+function securityResult(r, okText) {
+  if (r.body.success) {
+    setMessage('securityError', '');
+    setMessage('securityOk', okText);
+    log(okText, 'success');
+    if (r.body.reauthenticate) {
+      // 凭据变更后所有 Session 失效，回到登录页
+      setTimeout(() => { csrfToken = ''; authState = {stage: 'password'}; refreshAuthStatus(); }, 1200);
+    }
+    return true;
+  }
+  setMessage('securityOk', '');
+  setMessage('securityError', r.body.error || '操作失败');
+  return false;
+}
+
+$('saveUsername').addEventListener('click', async () => {
+  const r = await request('/api/auth/username', {
+    method: 'POST',
+    body: {username: $('newUsername').value.trim(), currentPassword: $('usernamePassword').value}
+  });
+  $('usernamePassword').value = '';
+  securityResult(r, '用户名已更新，请重新登录');
+});
+
+$('savePassword').addEventListener('click', async () => {
+  const body = {
+    currentPassword: $('currentPassword').value,
+    newPassword: $('newPassword').value,
+    confirmPassword: $('confirmPassword').value
+  };
+  const r = await request('/api/auth/password', {method: 'POST', body});
+  $('currentPassword').value = '';
+  $('newPassword').value = '';
+  $('confirmPassword').value = '';
+  securityResult(r, '密码已更新，请重新登录');
+});
+
+$('startTOTP').addEventListener('click', async () => {
+  const r = await request('/api/auth/2fa/setup', {
+    method: 'POST',
+    body: {currentPassword: $('totpSetupPassword').value}
+  });
+  $('totpSetupPassword').value = '';
+  if (!r.body.success && !r.body.secret) {
+    setMessage('securityError', r.body.error || '生成失败');
+    return;
+  }
+  setMessage('securityError', '');
+  $('totpQR').src = r.body.qrCodeDataUrl || '';
+  $('totpSecret').textContent = r.body.secret || '';
+  $('totpSetupBox').hidden = false;
+});
+
+$('enableTOTP').addEventListener('click', async () => {
+  const r = await request('/api/auth/2fa/enable', {
+    method: 'POST',
+    body: {code: $('totpEnableCode').value.trim()}
+  });
+  $('totpEnableCode').value = '';
+  if (securityResult(r, '双因素认证已启用，请重新登录')) {
+    $('totpSetupBox').hidden = true;
+  }
+});
+
+$('disableTOTP').addEventListener('click', async () => {
+  const r = await request('/api/auth/2fa/disable', {
+    method: 'POST',
+    body: {currentPassword: $('totpDisablePassword').value, code: $('totpDisableCode').value.trim()}
+  });
+  $('totpDisablePassword').value = '';
+  $('totpDisableCode').value = '';
+  securityResult(r, '双因素认证已停用，请重新登录');
+});
+
+/* ---------- 版本与更新（弹窗） ---------- */
+let latestVersion = '';
+
+function openUpdateModal() {
+  const dialog = $('updateModal');
+  if (!dialog.open) dialog.showModal();
+  loadVersion(true);
+}
+$('updateModalClose').addEventListener('click', () => $('updateModal').close());
+
+async function loadVersion(force) {
+  const r = await request('/api/system/version' + (force ? '?force=1' : ''));
+  setMessage('systemError', r.body.success ? '' : (r.body.error || '检查失败'));
+  $('versionBadge').textContent = 'v' + (r.body.current || '—');
+  $('versionBadge').className = 'version-badge' + (r.body.hasUpdate ? ' update' : '');
+  latestVersion = r.body.latest || '';
+
+  const info = $('versionInfo');
+  info.innerHTML = '';
+  const rows = [
+    ['当前版本', 'v' + (r.body.current || '—')],
+    ['最新版本', r.body.latest ? 'v' + r.body.latest : '—'],
+    ['发布时间', r.body.publishedAt || '—']
+  ];
+  rows.forEach(([k, v]) => {
+    const item = document.createElement('div');
+    item.className = 'session-item';
+    const key = document.createElement('div');
+    key.className = 'k';
+    key.textContent = k;
+    const value = document.createElement('div');
+    value.className = 'v';
+    value.textContent = v;
+    item.append(key, value);
+    info.appendChild(item);
+  });
+
+  // 说明文案只给结论，不展开部署细节
+  if (!r.body.success) {
+    $('updateHint').textContent = '暂时无法检查更新，请稍后重试。';
+    setMessage('systemError', '无法获取最新版本信息，请确认服务器已配置访问权限后重试。');
+  } else if (!r.body.updaterAvailable) {
+    $('updateHint').textContent = '当前部署方式不支持在页面内更新，请在服务器上执行更新脚本。';
+  } else if (r.body.hasUpdate) {
+    $('updateHint').textContent = `发现新版本 v${r.body.latest}，可以立即更新。更新过程中服务会短暂重启。`;
+  } else {
+    $('updateHint').textContent = '已是最新版本。';
+  }
+  // 仓库名只在成功检查时展示，失败时不暴露来源
+  $('updateFootnote').textContent = r.body.success ? (r.body.repository || '') : '';
+  $('startUpdate').disabled = !(r.body.updaterAvailable && r.body.hasUpdate);
+  await loadUpdateStatus();
+}
+
+async function loadUpdateStatus() {
+  const r = await request('/api/system/update');
+  const b = r.body || {};
+  if (b.phase === 'running') {
+    $('updateOutput').textContent = '正在更新到 v' + (b.target || '') + '…';
+    $('startUpdate').disabled = true;
+  } else if (b.phase === 'completed') {
+    $('updateOutput').textContent = (b.output || '') + '\n\n✔ 更新完成' +
+      (b.finishedAt ? '（' + new Date(b.finishedAt).toLocaleString('zh-CN') + '）' : '');
+  } else if (b.phase === 'failed') {
+    $('updateOutput').textContent = (b.output || '') + '\n\n✘ ' + (b.error || '更新失败');
+  } else {
+    $('updateOutput').textContent = '';
+  }
+}
+
+$('checkVersion').addEventListener('click', () => loadVersion(true));
+$('startUpdate').addEventListener('click', async () => {
+  if (!latestVersion) return;
+  $('startUpdate').disabled = true;
+  const r = await request('/api/system/update', {method: 'POST', body: {version: latestVersion}});
+  if (!r.body.success) {
+    setMessage('systemError', r.body.error || '发起更新失败');
+    $('startUpdate').disabled = false;
+    return;
+  }
+  setMessage('systemError', '');
+  log('已发起一键更新到 v' + latestVersion, 'success');
+  loadUpdateStatus();
+});
+
+/* ---------- 运行日志（磁盘日志查询） ---------- */
+let logAutoTimer = null;
+let logRequestSeq = 0;
+let logFollow = true; // 是否跟随最新一行：滚动到底部为 true，向上翻阅时暂停
+
+// logFetch 发请求并兜住网络异常与超时：日志面板不能因为一次失败就永远停在「加载中」。
+async function logFetch(path) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const resp = await fetch(path, {headers: {'X-CSRF-Token': csrfToken}, signal: controller.signal});
+    let payload = null;
+    try { payload = await resp.json(); } catch (e) { payload = {success: false, error: '响应格式不正确'}; }
+    if (resp.status === 401) {
+      showAuth();
+      return {ok: false, error: '登录状态已失效，请重新登录'};
+    }
+    if (!resp.ok) return {ok: false, error: (payload && payload.error) || ('请求失败（' + resp.status + '）')};
+    return {ok: true, body: payload || {}};
+  } catch (e) {
+    const timeout = e && e.name === 'AbortError';
+    return {ok: false, error: timeout ? '请求超时，请稍后重试' : ('无法连接服务：' + (e && e.message ? e.message : '网络异常'))};
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// fillLogDates 拉取可查询的日期，保留当前选中项；失败时返回错误文本
+async function fillLogDates() {
+  const r = await logFetch('/api/logs/dates');
+  if (!r.ok || !r.body.success) return r.error || '读取日志日期失败';
+  const select = $('logDate');
+  const previous = select.value;
+  select.innerHTML = '';
+  (r.body.dates || []).forEach((date) => {
+    const option = document.createElement('option');
+    option.value = date;
+    option.textContent = date + (date === r.body.today ? '（今天）' : '');
+    select.appendChild(option);
+  });
+  if (previous && (r.body.dates || []).includes(previous)) select.value = previous;
+  return '';
+}
+
+// 日志等级可能出现在三种位置：zap console 的 \tINFO\t、方括号 [INFO]、JSON 的 "level":"INFO"
+const LOG_LEVEL_RE = /\t(DEBUG|INFO|WARN|ERROR|SUCCESS|DPANIC|PANIC|FATAL)\t|\[(DEBUG|INFO|WARN|ERROR|SUCCESS|DPANIC|PANIC|FATAL)\]|"level":"(DEBUG|INFO|WARN|ERROR|SUCCESS|DPANIC|PANIC|FATAL)"/;
+
+// lineLevel 提取日志行等级，取不到时返回空串
+function lineLevel(line) {
+  const m = line.match(LOG_LEVEL_RE);
+  return m ? (m[1] || m[2] || m[3]) : '';
+}
+
+// loadLogs 按当前筛选条件查询日志；followLatest 为真时滚动到最新一行。
+// 无论成功失败都会结束加载态，不会留下「加载中…」占位。
+async function loadLogs(followLatest) {
+  const seq = ++logRequestSeq;
+  if (!logBox.children.length || logBox.dataset.loading === '1') {
+    logBox.textContent = '正在加载日志…';
+    logBox.dataset.loading = '1';
+  }
+  const params = new URLSearchParams({
+    date: $('logDate').value,
+    level: $('logLevel').value,
+    keyword: $('logKeyword').value.trim(),
+  });
+  const r = await logFetch('/api/logs?' + params.toString());
+  // 已有更新的查询在跑，丢弃这一份过期结果
+  if (seq !== logRequestSeq) return;
+  delete logBox.dataset.loading;
+  if (!r.ok || !r.body.success) {
+    setMessage('logsError', (r.error || r.body.error || '查询日志失败') + '。已有日志保留，可点「查询」重试。');
+    // 首次就失败时给一句明确说明，而不是让占位文字留在那里
+    if (!logBox.children.length) {
+      logBox.textContent = '暂时读不到日志';
+    }
+    return;
+  }
+  setMessage('logsError', '');
+  const lines = r.body.lines || [];
+  logBox.innerHTML = '';
+  if (!lines.length) {
+    const empty = document.createElement('span');
+    empty.className = 'log-empty';
+    empty.textContent = '该日期与筛选条件下没有日志';
+    logBox.appendChild(empty);
+    updateFollowButton();
+    return;
+  }
+  const fragment = document.createDocumentFragment();
+  lines.forEach((line) => {
+    const div = document.createElement('div');
+    // WARN / ERROR / SUCCESS 着色，其余保持默认色
+    const lv = lineLevel(line);
+    if (lv === 'WARN' || lv === 'ERROR' || lv === 'SUCCESS') div.className = lv;
+    div.textContent = line;
+    fragment.appendChild(div);
+  });
+  logBox.appendChild(fragment);
+  logBox.setAttribute('data-total', r.body.total);
+  if (followLatest) {
+    logFollow = true;
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+  updateFollowButton();
+}
+
+// updateFollowButton 按当前是否停留在底部更新「跟随最新」按钮
+function updateFollowButton() {
+  const btn = $('logFollow');
+  btn.textContent = logFollow ? '已跟随最新' : '跟随最新';
+  btn.setAttribute('aria-pressed', logFollow ? 'true' : 'false');
+}
+
+// renderLogAuto 用唯一的来源（logAutoTimer）渲染按钮，避免按钮文字和实际状态不一致
+function renderLogAuto() {
+  const running = logAutoTimer !== null;
+  const btn = $('logAuto');
+  btn.textContent = running ? '停止刷新' : '自动刷新';
+  btn.setAttribute('aria-pressed', running ? 'true' : 'false');
+}
+
+// stopLogAuto 停止自动刷新；重复调用无副作用
+function stopLogAuto() {
+  if (logAutoTimer !== null) {
+    clearInterval(logAutoTimer);
+    logAutoTimer = null;
+  }
+  renderLogAuto();
+}
+
+// startLogAuto 先装上定时器再渲染按钮：即使首次查询失败，按钮也已经是「停止刷新」，
+// 再点一次必然走停止分支，不会出现点了没反应的情况。
+function startLogAuto() {
+  if (logAutoTimer !== null) return;
+  logAutoTimer = setInterval(async () => {
+    const dateError = await fillLogDates();
+    if (dateError) setMessage('logsError', dateError);
+    await loadLogs(logFollow);
+  }, 5000);
+  renderLogAuto();
+  loadLogs(true);
+}
+
+// 用户向上翻阅时暂停自动跟随，滚回底部再恢复
+logBox.addEventListener('scroll', () => {
+  logFollow = logBox.scrollHeight - logBox.clientHeight - logBox.scrollTop < 24;
+  updateFollowButton();
+});
+
+$('logQuery').addEventListener('click', () => loadLogs(false));
+$('logDate').addEventListener('change', () => loadLogs(false));
+$('logLevel').addEventListener('change', () => loadLogs(false));
+$('logKeyword').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadLogs(false); });
+$('logFollow').addEventListener('click', () => {
+  logFollow = true;
+  // 到底部再刷新一次，确保看到的就是最新一条
+  loadLogs(true);
+});
+$('logAuto').addEventListener('click', () => {
+  if (logAutoTimer !== null) stopLogAuto();
+  else startLogAuto();
+});
+
+/* ---------- 流量监控与邮箱配置 ---------- */
+// notifyState 保存上次拉到的配置，保存时只提交本页负责的字段
+let notifyState = {};
+// mailPasswordTouched 记录管理员是否动过密码框：只有动过才提交，避免把已保存的密码覆盖成空串
+let mailPasswordTouched = false;
+
+// gbToBytes / bytesToGb 阈值在页面上按 GB 展示，存储与接口一律用字节
+function gbToBytes(gb) { return Math.round(Number(gb) * 1024 * 1024 * 1024); }
+function bytesToGb(bytes) { return bytes ? (bytes / 1024 / 1024 / 1024).toFixed(2) : ''; }
+
+// parseRecipients 解析收件人输入：换行、逗号、分号与顿号都作为分隔符
+function parseRecipients(text) {
+  return text.split(/[\s,;、]+/).map((v) => v.trim()).filter(Boolean);
+}
+
+// formatTime 把 Unix 秒转成本地时间文本
+function formatTime(seconds) {
+  if (!seconds) return '—';
+  const d = new Date(seconds * 1000);
+  const pad = (v) => String(v).padStart(2, '0');
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+    pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+// renderMonitorStatus 渲染「还剩多少、下次什么时候查、现在是什么状态」
+function renderMonitorStatus(status) {
+  status = status || {};
+  const remaining = status.remaining || 0;
+  $('monitorRemaining').textContent = status.lastCollectAt ? kb(remaining) : '—';
+  $('monitorTotalHint').textContent = status.lastCollectAt
+    ? '上次查看 ' + formatTime(status.lastCollectAt).slice(11)
+    : '还没查过';
+  $('monitorThresholdView').textContent = notifyState.threshold
+    ? bytesToGb(notifyState.threshold) + ' GB' : '还没填';
+  if (status.lastCollectError) {
+    $('monitorArmedHint').textContent = '这次没查到，稍后重试';
+  } else if (status.armed === false) {
+    $('monitorArmedHint').textContent = '已提醒过';
+  } else {
+    $('monitorArmedHint').textContent = '监测中';
+  }
+  $('monitorNextRun').textContent = status.nextRunAt ? formatTime(status.nextRunAt).slice(11) : '—';
+  $('monitorIntervalHint').textContent = notifyState.intervalMinSeconds
+    ? '隔 ' + notifyState.intervalMinSeconds + '-' + notifyState.intervalMaxSeconds + ' 秒查一次' : '还没设置';
+}
+
+// recordReason 说明这条记录为什么发信
+function recordReason(reason) {
+  if (reason === 'thresholdChanged') return '改了提醒线，流量仍然不够';
+  if (reason === 'threshold') return '流量不够了';
+  return '—';
+}
+
+// renderMonitorRecords 渲染提醒记录
+function renderMonitorRecords(records) {
+  const body = $('monitorRecordsTable').querySelector('tbody');
+  body.innerHTML = '';
+  if (!records || !records.length) {
+    body.innerHTML = '<tr><td class="empty-cell" colspan="6">暂无提醒记录</td></tr>';
+    return;
+  }
+  records.forEach((item) => {
+    const tr = document.createElement('tr');
+    const cells = [
+      formatTime(item.at),
+      kb(item.remaining),
+      kb(item.threshold),
+      recordReason(item.reason),
+      (item.recipients || []).join('、') || '—',
+    ];
+    cells.forEach((text, index) => {
+      const td = document.createElement('td');
+      td.textContent = text;
+      if (index === 1 || index === 2) td.className = 'num';
+      tr.appendChild(td);
+    });
+    const result = document.createElement('td');
+    const badge = document.createElement('span');
+    badge.className = 'badge ' + (item.success ? 'green' : 'red');
+    badge.textContent = item.success ? '已发送' : '发送失败';
+    result.appendChild(badge);
+    if (!item.success && item.error) {
+      const hint = document.createElement('div');
+      hint.className = 'hint tight';
+      hint.textContent = item.error;
+      result.appendChild(hint);
+    }
+    tr.appendChild(result);
+    body.appendChild(tr);
+  });
+}
+
+// loadNotify 把已保存的设置填回两个页面
+async function loadNotify() {
+  const r = await request('/api/notify');
+  if (!r.body.success) {
+    setMessage('monitorError', r.body.error || '读不到设置，请刷新页面重试');
+    setMessage('mailError', r.body.error || '读不到设置，请刷新页面重试');
+    return;
+  }
+  const d = r.body;
+  notifyState = d;
+  $('monitorEnabled').checked = !!d.enabled;
+  $('monitorThreshold').value = d.threshold ? bytesToGb(d.threshold) : '';
+  $('monitorIntervalMin').value = d.intervalMinSeconds || d.minInterval || 5;
+  $('monitorIntervalMax').value = d.intervalMaxSeconds || d.maxInterval || 10;
+  $('monitorIntervalMin').min = d.minInterval || 5;
+  $('monitorIntervalMin').max = d.maxInterval || 60;
+  $('monitorIntervalMax').min = d.minInterval || 5;
+  $('monitorIntervalMax').max = d.maxInterval || 60;
+  renderMonitorStatus(d.status);
+  renderMonitorRecords(d.records);
+  const recipients = d.recipients || [];
+  $('monitorRecipients').value = recipients.join('\n');
+  $('monitorSmtpHint').textContent = d.senderConfigured
+    ? '由 ' + (d.smtpFrom || d.smtpHost || '已配置邮箱') + ' 发出'
+    : '先去「邮箱配置」填发件邮箱';
+  $('monitorRecipientsHint').textContent = d.recipientsValid
+    ? '只用于收流量提醒。'
+    : '至少填一个邮箱。';
+
+  $('mailHost').value = d.smtpHost || '';
+  $('mailPort').value = d.smtpPort || '';
+  $('mailUsername').value = d.smtpUsername || '';
+  $('mailFrom').value = d.smtpFrom || '';
+  $('mailEncryption').value = d.smtpEncryption || 'auto';
+  const password = $('mailPassword');
+  password.value = '';
+  password.placeholder = d.passwordSet ? '留空表示不改' : '授权码';
+  mailPasswordTouched = false;
+  $('mailStatus').textContent = d.senderConfigured ? '' : '还没填全';
+}
+
+// saveMonitorSettings 只提交告警规则与收件人：阈值、周期区间、启停与收件人
+async function saveMonitorSettings() {
+  const button = $('monitorSave');
+  if (!$('monitorThreshold').reportValidity() ||
+      !$('monitorIntervalMin').reportValidity() || !$('monitorIntervalMax').reportValidity()) return;
+  const gb = Number($('monitorThreshold').value);
+  if (!(gb > 0)) {
+    setMessage('monitorError', '「剩余多少 GB 时提醒」要填一个大于 0 的数字');
+    return;
+  }
+  const minInterval = Number($('monitorIntervalMin').value);
+  const maxInterval = Number($('monitorIntervalMax').value);
+  if (maxInterval < minInterval) {
+    setMessage('monitorError', '「最多隔几秒查一次」不能比「最少隔几秒查一次」小');
+    return;
+  }
+  button.disabled = true;
+  try {
+    const r = await request('/api/notify', {method: 'PUT', body: {
+      enabled: $('monitorEnabled').checked,
+      threshold: gbToBytes(gb),
+      intervalMinSeconds: minInterval,
+      intervalMaxSeconds: maxInterval,
+      recipients: parseRecipients($('monitorRecipients').value),
+    }});
+    if (!r.body.success) {
+      setMessage('monitorError', r.body.error || '保存失败');
+      return;
+    }
+    setMessage('monitorError', '');
+    await loadNotify();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// saveMailSettings 只保存「用哪个邮箱发出去」这几项，不动收件人和提醒规则
+async function saveMailSettings() {
+  const button = $('mailSave');
+  if (!$('mailPort').reportValidity()) return;
+  button.disabled = true;
+  try {
+    const payload = {
+      smtpHost: $('mailHost').value.trim(),
+      smtpPort: Number($('mailPort').value) || 0,
+      smtpUsername: $('mailUsername').value.trim(),
+      smtpFrom: $('mailFrom').value.trim(),
+      smtpEncryption: $('mailEncryption').value,
+    };
+    // 非空即提交（密码管理器自动填充不一定触发 input）；空串只在动过密码框时提交，表示清除
+    const password = $('mailPassword');
+    if (password.value !== '' || mailPasswordTouched) payload.smtpPassword = password.value;
+    const r = await request('/api/notify', {method: 'PUT', body: payload});
+    if (!r.body.success) {
+      setMessage('mailError', r.body.error || '保存失败');
+      return;
+    }
+    setMessage('mailError', '');
+    await loadNotify();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+$('monitorSave').addEventListener('click', saveMonitorSettings);
+$('mailSave').addEventListener('click', saveMailSettings);
+$('mailPassword').addEventListener('input', () => { mailPasswordTouched = true; });
+// 试发：直接用页面上当前填写的内容发一封，不保存、不改动已经存好的设置
+$('mailTestSend').addEventListener('click', async () => {
+  const button = $('mailTestSend');
+  const status = $('mailStatus');
+  if (!$('mailTestRecipient').reportValidity()) return;
+  const recipient = $('mailTestRecipient').value.trim();
+  const payload = {
+    smtpHost: $('mailHost').value.trim(),
+    smtpPort: Number($('mailPort').value) || 0,
+    smtpUsername: $('mailUsername').value.trim(),
+    smtpFrom: $('mailFrom').value.trim(),
+    smtpEncryption: $('mailEncryption').value,
+    testRecipients: recipient ? [recipient] : [],
+  };
+  // 密码框留空表示继续用之前存好的密码
+  if ($('mailPassword').value !== '') payload.smtpPassword = $('mailPassword').value;
+  button.disabled = true;
+  status.textContent = '正在发…';
+  try {
+    const r = await request('/api/notify/test', {method: 'POST', body: payload});
+    status.textContent = r.body.success
+      ? '已发到 ' + (r.body.recipients || []).join('、') + '，没收到就看看垃圾邮件'
+      : (r.body.error || '没发出去');
+  } finally {
+    button.disabled = false;
+  }
+});
+$('monitorCheck').addEventListener('click', async () => {
+  const button = $('monitorCheck');
+  button.disabled = true;
+  try {
+    const r = await request('/api/monitor/check', {method: 'POST', body: {}});
+    if (!r.body.success) setMessage('monitorError', r.body.error || '这次没查到流量，过一会儿会自动再试');
+    else setMessage('monitorError', '');
+    renderMonitorStatus(r.body.status);
+    await loadNotify();
+  } finally {
+    button.disabled = false;
+  }
+});
+$('monitorClearRecords').addEventListener('click', async () => {
+  if (!confirm('确定清空全部告警记录？邮件与告警配置会保留。')) return;
+  const r = await request('/api/monitor/records', {method: 'DELETE'});
+  if (!r.body.success) setMessage('monitorError', r.body.error || '清空失败');
+  else await loadNotify();
+});
+
+/* ---------- 启动 ---------- */
+refreshAuthStatus();
+</script>
+</body>
+</html>

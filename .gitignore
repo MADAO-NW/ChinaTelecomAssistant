@@ -1,0 +1,24 @@
+vendor
+.netrc
+.vscode
+.vs
+.tern-project
+.DS_Store
+.idea
+.cgo_ldflags
+tmp
+dist
+build
+
+eslintcache
+
+# 运行时数据：日志、会话、设备号、管理员凭据
+data/
+.ctlogin/
+ctm
+*.pid
+
+# 本地备份与临时产物
+*.bak
+*.log
+.ctm-removed-*
